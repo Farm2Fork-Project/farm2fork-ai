@@ -1,0 +1,42 @@
+project:
+  name: farm2fork-ai
+  seed: 42
+
+data:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  metadata_dir: data/metadata
+  image_size: 224
+  num_workers: 4
+  crops:
+    - wheat
+    - rice
+    - mango
+    - maize
+    - cotton
+    - sugarcane
+  grades:
+    - A
+    - B
+    - C
+    - D
+
+model:
+  backbone: efficientnet_b3
+  pretrained: true
+  dropout_rate: 0.3
+  num_crops: 6
+  num_grades: 4
+
+training:
+  batch_size: 32
+  epochs: 50
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  crop_loss_weight: 0.4
+  grade_loss_weight: 0.6
+  warmup_epochs: 3
+
+inference:
+  confidence_threshold: 0.7
+  checkpoint_path: models/checkpoints/best_model.pth
