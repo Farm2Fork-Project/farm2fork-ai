@@ -55,6 +55,24 @@ Smoke test model forward pass:
 python scripts/smoke_test_model.py
 ```
 
+Run a tiny training sanity check:
+
+```powershell
+python scripts/sanity_train_subset.py
+```
+
+Run a small checkpointed training experiment:
+
+```powershell
+python scripts/train.py --backbone efficientnet_b0 --epochs 2 --batch-size 8 --max-train-samples 256 --max-val-samples 128
+```
+
+Evaluate a checkpoint:
+
+```powershell
+python scripts/evaluate.py --backbone efficientnet_b0 --checkpoint models/checkpoints/best_model.pth
+```
+
 ## Project Layout
 
 ```text
