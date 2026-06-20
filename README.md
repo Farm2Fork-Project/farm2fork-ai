@@ -43,6 +43,18 @@ Build bootstrap quality manifests from confirmed rice and mango mappings:
 python scripts/build_bootstrap_quality_manifests.py
 ```
 
+Smoke test dataset loading:
+
+```powershell
+python scripts/smoke_test_dataset.py
+```
+
+Smoke test model forward pass:
+
+```powershell
+python scripts/smoke_test_model.py
+```
+
 ## Project Layout
 
 ```text
