@@ -16,6 +16,17 @@ def adjacent_accuracy(predictions: torch.Tensor, targets: torch.Tensor, *, max_d
     return ((predictions - targets).abs() <= max_distance).float().mean().item()
 
 
+def adjacent_accuracy_from_logits(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    *,
+    max_distance: int = 1,
+) -> float:
+    """Compute adjacent accuracy from classification logits."""
+    predictions = logits.argmax(dim=1)
+    return adjacent_accuracy(predictions, targets, max_distance=max_distance)
+
+
 def confusion_matrix(
     predictions: torch.Tensor,
     targets: torch.Tensor,

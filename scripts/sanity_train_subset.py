@@ -13,6 +13,7 @@ sys.path.insert(0, str(SRC_DIR))
 try:
     import torch
     from torch.utils.data import DataLoader, Subset
+    from tqdm.auto import tqdm
 except ImportError as exc:
     raise SystemExit("PyTorch is required. Install ML dependencies with: pip install -e .[ml]") from exc
 
@@ -66,7 +67,8 @@ def main() -> int:
     print(f"Dataset rows: {len(dataset)} | subset rows: {len(subset)}")
 
     last_loss = None
-    for step, batch in enumerate(loader, start=1):
+    progress = tqdm(loader, desc="sanity train", total=min(args.steps, len(loader)), leave=False)
+    for step, batch in enumerate(progress, start=1):
         if step > args.steps:
             break
 
@@ -83,13 +85,11 @@ def main() -> int:
         crop_acc = accuracy_from_logits(crop_logits.detach(), crop_targets)
         grade_acc = accuracy_from_logits(grade_logits.detach(), grade_targets)
         last_loss = losses["loss"].item()
-        print(
-            f"step={step} "
-            f"loss={last_loss:.4f} "
-            f"crop_loss={losses['crop_loss'].item():.4f} "
-            f"grade_loss={losses['grade_loss'].item():.4f} "
-            f"crop_acc={crop_acc:.3f} "
-            f"grade_acc={grade_acc:.3f}"
+        progress.set_postfix(
+            step=step,
+            loss=f"{last_loss:.4f}",
+            crop_acc=f"{crop_acc:.3f}",
+            grade_acc=f"{grade_acc:.3f}",
         )
 
     if last_loss is None:

@@ -45,6 +45,7 @@ def test_trainer_runs_one_epoch_and_saves_checkpoint(tmp_path):
         optimizer=optimizer,
         device=torch.device("cpu"),
         checkpoint_dir=tmp_path,
+        show_progress=False,
     )
 
     train_metrics = trainer.train_epoch()
@@ -52,6 +53,7 @@ def test_trainer_runs_one_epoch_and_saves_checkpoint(tmp_path):
     checkpoint = trainer.save_checkpoint(epoch=1, metrics=val_metrics, is_best=True)
 
     assert train_metrics.loss > 0
+    assert train_metrics.adjacent_grade_accuracy >= 0
     assert val_metrics.loss > 0
     assert checkpoint.exists()
     assert (tmp_path / "latest_model.pth").exists()

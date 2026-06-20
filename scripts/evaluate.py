@@ -32,6 +32,7 @@ def main() -> int:
     parser.add_argument("--backbone", default="efficientnet_b0")
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--max-samples", type=int, default=None)
+    parser.add_argument("--no-progress", action="store_true", help="Disable progress bar.")
     args = parser.parse_args()
 
     config = load_config(ROOT_DIR / "configs/default.yaml")
@@ -65,7 +66,7 @@ def main() -> int:
     state_dict = checkpoint.get("model_state_dict", checkpoint)
     model.load_state_dict(state_dict)
 
-    result = evaluate_model(model, loader, device=device)
+    result = evaluate_model(model, loader, device=device, show_progress=not args.no_progress)
     print(f"Checkpoint: {checkpoint_path.relative_to(ROOT_DIR)}")
     print(f"Device: {device}")
     print(f"Samples: {result.total_samples}")

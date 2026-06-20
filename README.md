@@ -67,6 +67,9 @@ Run a small checkpointed training experiment:
 python scripts/train.py --backbone efficientnet_b0 --epochs 2 --batch-size 8 --max-train-samples 256 --max-val-samples 128
 ```
 
+Add `--no-progress` to training or evaluation commands if you want plain logs only.
+Training uses grade class weights by default. Use `--class-weights none` to disable them, or `--class-weights both` to weight crop and grade losses.
+
 Evaluate a checkpoint:
 
 ```powershell

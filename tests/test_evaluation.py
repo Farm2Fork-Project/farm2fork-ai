@@ -44,7 +44,7 @@ def test_evaluate_model_returns_aggregate_metrics() -> None:
     grade_labels = torch.tensor([2, 1, 2])
     loader = DataLoader(DictDataset(images, crop_labels, grade_labels), batch_size=2)
 
-    result = evaluate_model(FixedModel(), loader, device=torch.device("cpu"))
+    result = evaluate_model(FixedModel(), loader, device=torch.device("cpu"), show_progress=False)
 
     assert result.total_samples == 3
     assert result.crop_accuracy == pytest.approx(2 / 3)

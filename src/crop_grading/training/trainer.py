@@ -7,9 +7,14 @@ from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 
 from crop_grading.training.losses import MultiTaskLoss
-from crop_grading.training.metrics import RunningAverage, accuracy_from_logits
+from crop_grading.training.metrics import (
+    RunningAverage,
+    accuracy_from_logits,
+    adjacent_accuracy_from_logits,
+)
 
 
 @dataclass(frozen=True)
@@ -21,6 +26,7 @@ class EpochMetrics:
     grade_loss: float
     crop_accuracy: float
     grade_accuracy: float
+    adjacent_grade_accuracy: float
 
 
 class Trainer:
@@ -36,6 +42,7 @@ class Trainer:
         optimizer: torch.optim.Optimizer,
         device: torch.device,
         checkpoint_dir: str | Path,
+        show_progress: bool = True,
     ) -> None:
         self.model = model
         self.train_loader = train_loader
@@ -46,15 +53,16 @@ class Trainer:
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         self.best_grade_accuracy = -1.0
+        self.show_progress = show_progress
 
-    def train_epoch(self) -> EpochMetrics:
+    def train_epoch(self, *, epoch: int | None = None) -> EpochMetrics:
         self.model.train()
-        return self._run_epoch(train=True)
+        return self._run_epoch(train=True, epoch=epoch)
 
     @torch.no_grad()
-    def validate(self) -> EpochMetrics:
+    def validate(self, *, epoch: int | None = None) -> EpochMetrics:
         self.model.eval()
-        return self._run_epoch(train=False)
+        return self._run_epoch(train=False, epoch=epoch)
 
     def save_checkpoint(
         self,
@@ -78,15 +86,20 @@ class Trainer:
             return best_path
         return latest_path
 
-    def _run_epoch(self, *, train: bool) -> EpochMetrics:
+    def _run_epoch(self, *, train: bool, epoch: int | None) -> EpochMetrics:
         loss_avg = RunningAverage()
         crop_loss_avg = RunningAverage()
         grade_loss_avg = RunningAverage()
         crop_acc_avg = RunningAverage()
         grade_acc_avg = RunningAverage()
+        adjacent_grade_acc_avg = RunningAverage()
 
         loader = self.train_loader if train else self.val_loader
-        for batch in loader:
+        mode = "train" if train else "val"
+        desc = f"{mode} epoch {epoch}" if epoch is not None else mode
+        progress = tqdm(loader, desc=desc, leave=False, disable=not self.show_progress)
+
+        for batch in progress:
             images = batch["image"].to(self.device)
             crop_targets = batch["crop_label"].to(self.device)
             grade_targets = batch["grade_label"].to(self.device)
@@ -107,6 +120,16 @@ class Trainer:
             grade_loss_avg.update(losses["grade_loss"].item(), batch_size)
             crop_acc_avg.update(accuracy_from_logits(crop_logits.detach(), crop_targets), batch_size)
             grade_acc_avg.update(accuracy_from_logits(grade_logits.detach(), grade_targets), batch_size)
+            adjacent_grade_acc_avg.update(
+                adjacent_accuracy_from_logits(grade_logits.detach(), grade_targets),
+                batch_size,
+            )
+            progress.set_postfix(
+                loss=f"{loss_avg.value:.4f}",
+                crop_acc=f"{crop_acc_avg.value:.3f}",
+                grade_acc=f"{grade_acc_avg.value:.3f}",
+                adj_grade=f"{adjacent_grade_acc_avg.value:.3f}",
+            )
 
         return EpochMetrics(
             loss=loss_avg.value,
@@ -114,4 +137,5 @@ class Trainer:
             grade_loss=grade_loss_avg.value,
             crop_accuracy=crop_acc_avg.value,
             grade_accuracy=grade_acc_avg.value,
+            adjacent_grade_accuracy=adjacent_grade_acc_avg.value,
         )

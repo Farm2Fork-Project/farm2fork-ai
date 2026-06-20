@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import torch
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 
 from crop_grading.constants import CROP_CLASSES, GRADE_CLASSES
 from crop_grading.training.metrics import adjacent_accuracy, confusion_matrix
@@ -29,6 +30,7 @@ def evaluate_model(
     loader: DataLoader,
     *,
     device: torch.device,
+    show_progress: bool = True,
 ) -> EvaluationResult:
     """Evaluate crop and grade predictions for all batches in a loader."""
     model.eval()
@@ -37,7 +39,8 @@ def evaluate_model(
     grade_predictions = []
     grade_targets = []
 
-    for batch in loader:
+    progress = tqdm(loader, desc="evaluate", leave=False, disable=not show_progress)
+    for batch in progress:
         images = batch["image"].to(device)
         crop_target = batch["crop_label"].to(device)
         grade_target = batch["grade_label"].to(device)
@@ -47,6 +50,7 @@ def evaluate_model(
         crop_targets.append(crop_target.cpu())
         grade_predictions.append(grade_logits.argmax(dim=1).cpu())
         grade_targets.append(grade_target.cpu())
+        progress.set_postfix(samples=sum(tensor.numel() for tensor in grade_targets))
 
     crop_pred = torch.cat(crop_predictions)
     crop_true = torch.cat(crop_targets)
