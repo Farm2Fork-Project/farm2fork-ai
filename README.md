@@ -31,6 +31,18 @@ Validate the scaffold and config:
 python scripts/validate_setup.py
 ```
 
+Validate dataset manifests:
+
+```powershell
+python scripts/validate_manifests.py --no-file-check --allow-missing
+```
+
+Build bootstrap quality manifests from confirmed rice and mango mappings:
+
+```powershell
+python scripts/build_bootstrap_quality_manifests.py
+```
+
 ## Project Layout
 
 ```text

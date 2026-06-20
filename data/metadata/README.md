@@ -13,6 +13,18 @@ image_path,crop_label,grade_label,source,split
 processed/train/rice/A/example.jpg,rice,A,kaggle_rice,train
 ```
 
+Validate one manifest:
+
+```powershell
+python scripts/validate_manifests.py data/metadata/train_labels.csv
+```
+
+Validate labels and schema before images are present:
+
+```powershell
+python scripts/validate_manifests.py data/metadata/train_labels.csv --no-file-check
+```
+
 Rules:
 
 - `crop_label` must be one of `wheat`, `rice`, `mango`, `maize`, `cotton`, `sugarcane`.
