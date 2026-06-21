@@ -28,6 +28,20 @@ class EpochMetrics:
     grade_accuracy: float
     adjacent_grade_accuracy: float
 
+    def selection_score(
+        self,
+        *,
+        crop_weight: float = 0.4,
+        adjacent_grade_weight: float = 0.4,
+        grade_weight: float = 0.2,
+    ) -> float:
+        """Combined score used to choose the most useful checkpoint."""
+        return (
+            crop_weight * self.crop_accuracy
+            + adjacent_grade_weight * self.adjacent_grade_accuracy
+            + grade_weight * self.grade_accuracy
+        )
+
 
 class Trainer:
     """Owns epoch-level train/validate/checkpoint behavior."""

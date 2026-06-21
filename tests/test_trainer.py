@@ -54,6 +54,7 @@ def test_trainer_runs_one_epoch_and_saves_checkpoint(tmp_path):
 
     assert train_metrics.loss > 0
     assert train_metrics.adjacent_grade_accuracy >= 0
+    assert train_metrics.selection_score() >= 0
     assert val_metrics.loss > 0
     assert checkpoint.exists()
     assert (tmp_path / "latest_model.pth").exists()

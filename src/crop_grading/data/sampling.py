@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import random
 
+import torch
+from torch.utils.data import Subset, WeightedRandomSampler
+
 from crop_grading.data.dataset import CropGradeDataset
 
 
@@ -37,3 +40,38 @@ def sample_subset_indexes(
 
     rng.shuffle(selected)
     return selected[:max_samples]
+
+
+def build_balanced_sampler(
+    dataset: CropGradeDataset,
+    subset: Subset,
+    *,
+    balance_by: str = "crop_grade",
+    seed: int = 42,
+) -> WeightedRandomSampler:
+    """Build a replacement sampler weighted by inverse group frequency."""
+    if balance_by not in {"crop_grade", "grade", "crop"}:
+        raise ValueError("balance_by must be one of: crop_grade, grade, crop")
+
+    group_counts: dict[tuple[str, ...], int] = {}
+    groups = []
+    for index in subset.indices:
+        sample = dataset.samples[index]
+        if balance_by == "crop_grade":
+            group = (sample.crop_label, sample.grade_label)
+        elif balance_by == "grade":
+            group = (sample.grade_label,)
+        else:
+            group = (sample.crop_label,)
+        groups.append(group)
+        group_counts[group] = group_counts.get(group, 0) + 1
+
+    weights = torch.tensor([1.0 / group_counts[group] for group in groups], dtype=torch.double)
+    generator = torch.Generator()
+    generator.manual_seed(seed)
+    return WeightedRandomSampler(
+        weights=weights,
+        num_samples=len(weights),
+        replacement=True,
+        generator=generator,
+    )
