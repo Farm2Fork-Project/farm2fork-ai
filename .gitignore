@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE/editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Data and generated artifacts
+data/raw/
+data/processed/
+!data/metadata/
+!data/metadata/README.md
+data/metadata/*.csv
+
+# Model artifacts
+models/backbone/
+models/checkpoints/
+models/exports/
+*.pt
+*.pth
+*.onnx
+*.tflite
+
+# Training and evaluation outputs
+runs/
+wandb/
+outputs/
+logs/
+
+# API/runtime temp files
+tmp/
+temp/
+*.log
