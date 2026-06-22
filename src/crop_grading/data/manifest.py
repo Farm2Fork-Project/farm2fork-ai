@@ -146,6 +146,33 @@ def validate_manifest_directory(
     ]
 
 
+def find_cross_split_duplicates(metadata_dir: str | Path) -> dict[str, list[str]]:
+    """Find image paths that appear in more than one standard split manifest."""
+    metadata_path = Path(metadata_dir)
+    split_files = {
+        "train": metadata_path / "train_labels.csv",
+        "val": metadata_path / "val_labels.csv",
+        "test": metadata_path / "test_labels.csv",
+    }
+    path_to_splits: dict[str, list[str]] = {}
+
+    for split, manifest_path in split_files.items():
+        if not manifest_path.exists():
+            continue
+        with manifest_path.open("r", encoding="utf-8-sig", newline="") as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                image_path = (row.get("image_path") or "").strip()
+                if image_path:
+                    path_to_splits.setdefault(image_path, []).append(split)
+
+    return {
+        image_path: splits
+        for image_path, splits in path_to_splits.items()
+        if len(set(splits)) > 1
+    }
+
+
 def _row_error(path: Path, row_number: int, message: str) -> ManifestIssue:
     return ManifestIssue("error", message, row_number=row_number, file_path=path)
 

@@ -28,29 +28,39 @@ from crop_grading.utils.config import load_config
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Train for a few batches to verify the pipeline.")
-    parser.add_argument("--manifest", default="data/metadata/train_labels.csv")
-    parser.add_argument("--backbone", default="efficientnet_b0")
-    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--config", default="configs/default.yaml")
+    parser.add_argument("--manifest", default=None)
+    parser.add_argument("--backbone", default=None)
+    parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--max-samples", type=int, default=64)
     parser.add_argument("--steps", type=int, default=5)
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--lr", type=float, default=None)
     args = parser.parse_args()
 
-    config = load_config(ROOT_DIR / "configs/default.yaml")
+    config = load_config(ROOT_DIR / args.config)
+    manifest = args.manifest or config.data.train_manifest
+    backbone = args.backbone or config.model.backbone
+    batch_size = args.batch_size or config.training.batch_size
+    learning_rate = args.lr or config.training.learning_rate
     torch.manual_seed(config.project.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     dataset = CropGradeDataset(
-        ROOT_DIR / args.manifest,
+        ROOT_DIR / manifest,
         project_root=ROOT_DIR,
         transform=build_train_transforms(config.data.image_size),
     )
     subset_indexes = sample_subset_indexes(dataset, max_samples=args.max_samples, seed=config.project.seed)
     subset = Subset(dataset, subset_indexes)
-    loader = DataLoader(subset, batch_size=args.batch_size, shuffle=True, num_workers=0)
+    loader = DataLoader(
+        subset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=config.data.num_workers,
+    )
 
     model = CropGradingModel(
-        backbone_name=args.backbone,
+        backbone_name=backbone,
         num_crops=config.model.num_crops,
         num_grades=config.model.num_grades,
         dropout_rate=config.model.dropout_rate,
@@ -60,7 +70,11 @@ def main() -> int:
         crop_weight=config.training.crop_loss_weight,
         grade_weight=config.training.grade_loss_weight,
     ).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=config.training.weight_decay)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=learning_rate,
+        weight_decay=config.training.weight_decay,
+    )
 
     model.train()
     print(f"Device: {device}")

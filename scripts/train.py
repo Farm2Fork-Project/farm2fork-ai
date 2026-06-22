@@ -30,56 +30,37 @@ from crop_grading.utils.experiment_log import append_experiment_log, utc_timesta
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Train crop quality grading model.")
-    parser.add_argument("--train-manifest", default="data/metadata/train_labels.csv")
-    parser.add_argument("--val-manifest", default="data/metadata/val_labels.csv")
-    parser.add_argument("--backbone", default="efficientnet_b0")
-    parser.add_argument("--epochs", type=int, default=2)
-    parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--lr", type=float, default=3e-4)
-    parser.add_argument("--max-train-samples", type=int, default=None)
-    parser.add_argument("--max-val-samples", type=int, default=None)
-    parser.add_argument("--checkpoint-dir", default="models/checkpoints")
-    parser.add_argument("--pretrained", action="store_true", help="Use pretrained backbone weights.")
-    parser.add_argument("--no-progress", action="store_true", help="Disable progress bars.")
-    parser.add_argument(
-        "--class-weights",
-        choices=("none", "grade", "both"),
-        default="grade",
-        help="Apply inverse-frequency class weights computed from the training subset.",
-    )
-    parser.add_argument(
-        "--selection-metric",
-        choices=("combined", "grade", "adjacent", "crop", "loss"),
-        default="combined",
-        help="Metric used to save best_model.pth.",
-    )
-    parser.add_argument(
-        "--sampler",
-        choices=("random", "balanced"),
-        default="random",
-        help="Training sampler. Balanced weights crop-grade groups inversely by frequency.",
-    )
-    parser.add_argument(
-        "--balance-by",
-        choices=("crop_grade", "grade", "crop"),
-        default="crop_grade",
-        help="Grouping used when --sampler balanced is enabled.",
-    )
-    parser.add_argument("--experiment-log", default="outputs/experiments/training_runs.csv")
+    parser.add_argument("--config", default="configs/default.yaml")
     args = parser.parse_args()
 
-    config = load_config(ROOT_DIR / "configs/default.yaml")
+    config = load_config(ROOT_DIR / args.config)
+    train_manifest = config.data.train_manifest
+    val_manifest = config.data.val_manifest
+    backbone = config.model.backbone
+    epochs = config.training.epochs
+    batch_size = config.training.batch_size
+    learning_rate = config.training.learning_rate
+    pretrained = config.model.pretrained
+    class_weights = config.training.class_weights
+    selection_metric = config.training.selection_metric
+    sampler = config.training.sampler
+    balance_by = config.training.balance_by
+    checkpoint_dir = config.training.checkpoint_dir
+    experiment_log = config.training.experiment_log
+    patience = config.training.patience
+    min_delta = config.training.min_delta
+
     torch.manual_seed(config.project.seed)
     random.seed(config.project.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     train_dataset = CropGradeDataset(
-        ROOT_DIR / args.train_manifest,
+        ROOT_DIR / train_manifest,
         project_root=ROOT_DIR,
         transform=build_train_transforms(config.data.image_size),
     )
     val_dataset = CropGradeDataset(
-        ROOT_DIR / args.val_manifest,
+        ROOT_DIR / val_manifest,
         project_root=ROOT_DIR,
         transform=build_eval_transforms(config.data.image_size),
     )
@@ -88,7 +69,7 @@ def main() -> int:
         train_dataset,
         sample_subset_indexes(
             train_dataset,
-            max_samples=args.max_train_samples,
+            max_samples=config.training.max_train_samples,
             seed=config.project.seed,
         ),
     )
@@ -96,48 +77,53 @@ def main() -> int:
         val_dataset,
         sample_subset_indexes(
             val_dataset,
-            max_samples=args.max_val_samples,
+            max_samples=config.training.max_val_samples,
             seed=config.project.seed,
         ),
     )
 
     train_sampler = None
     train_shuffle = True
-    if args.sampler == "balanced":
+    if sampler == "balanced":
         train_sampler = build_balanced_sampler(
             train_dataset,
             train_subset,
-            balance_by=args.balance_by,
+            balance_by=balance_by,
             seed=config.project.seed,
         )
         train_shuffle = False
 
     train_loader = DataLoader(
         train_subset,
-        batch_size=args.batch_size,
+        batch_size=batch_size,
         shuffle=train_shuffle,
         sampler=train_sampler,
-        num_workers=0,
+        num_workers=config.data.num_workers,
     )
-    val_loader = DataLoader(val_subset, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    val_loader = DataLoader(
+        val_subset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=config.data.num_workers,
+    )
 
     model = CropGradingModel(
-        backbone_name=args.backbone,
+        backbone_name=backbone,
         num_crops=config.model.num_crops,
         num_grades=config.model.num_grades,
         dropout_rate=config.model.dropout_rate,
-        pretrained=args.pretrained,
+        pretrained=pretrained,
     ).to(device)
     crop_class_weights = None
     grade_class_weights = None
-    if args.class_weights in {"grade", "both"}:
+    if class_weights in {"grade", "both"}:
         grade_class_weights = compute_class_weights_from_subset(
             train_dataset,
             train_subset,
             label_type="grade",
             num_classes=config.model.num_grades,
         ).to(device)
-    if args.class_weights == "both":
+    if class_weights == "both":
         crop_class_weights = compute_class_weights_from_subset(
             train_dataset,
             train_subset,
@@ -151,7 +137,11 @@ def main() -> int:
         crop_class_weights=crop_class_weights,
         grade_class_weights=grade_class_weights,
     ).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=config.training.weight_decay)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=learning_rate,
+        weight_decay=config.training.weight_decay,
+    )
 
     trainer = Trainer(
         model=model,
@@ -160,15 +150,16 @@ def main() -> int:
         loss_fn=loss_fn,
         optimizer=optimizer,
         device=device,
-        checkpoint_dir=ROOT_DIR / args.checkpoint_dir,
-        show_progress=not args.no_progress,
+        checkpoint_dir=ROOT_DIR / checkpoint_dir,
+        show_progress=config.training.show_progress,
     )
 
     print(f"Device: {device}")
-    print(f"Backbone: {args.backbone} | pretrained={args.pretrained}")
+    print(f"Backbone: {backbone} | pretrained={pretrained}")
     print(f"Train rows: {len(train_subset)} | Val rows: {len(val_subset)}")
-    print(f"Class weights: {args.class_weights}")
-    print(f"Sampler: {args.sampler}" + (f" ({args.balance_by})" if args.sampler == "balanced" else ""))
+    print(f"Class weights: {class_weights}")
+    print(f"Sampler: {sampler}" + (f" ({balance_by})" if sampler == "balanced" else ""))
+    print(f"Early stopping: patience={patience}, min_delta={min_delta}")
     if grade_class_weights is not None:
         print(f"Grade weights: {[round(value, 3) for value in grade_class_weights.cpu().tolist()]}")
 
@@ -177,21 +168,28 @@ def main() -> int:
     best_val_metrics = None
     final_train_metrics = None
     final_val_metrics = None
-    for epoch in range(1, args.epochs + 1):
+    epochs_without_improvement = 0
+    completed_epochs = 0
+    for epoch in range(1, epochs + 1):
+        completed_epochs = epoch
         train_metrics = trainer.train_epoch(epoch=epoch)
         val_metrics = trainer.validate(epoch=epoch)
         final_train_metrics = train_metrics
         final_val_metrics = val_metrics
-        selection_score = _selection_score(val_metrics, args.selection_metric)
+        selection_score = _selection_score(val_metrics, selection_metric)
         is_best = best_score is None or _is_better_score(
             selection_score,
             best_score,
-            args.selection_metric,
+            selection_metric,
+            min_delta=min_delta,
         )
         if is_best:
             best_score = selection_score
             best_epoch = epoch
             best_val_metrics = val_metrics
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
         checkpoint_path = trainer.save_checkpoint(epoch=epoch, metrics=val_metrics, is_best=is_best)
 
         print(
@@ -204,27 +202,37 @@ def main() -> int:
             f"val_crop_acc={val_metrics.crop_accuracy:.3f} "
             f"val_grade_acc={val_metrics.grade_accuracy:.3f} "
             f"val_adj_grade_acc={val_metrics.adjacent_grade_accuracy:.3f} "
-            f"selection_{args.selection_metric}={selection_score:.3f} "
+            f"selection_{selection_metric}={selection_score:.3f} "
             f"checkpoint={checkpoint_path.relative_to(ROOT_DIR)}"
         )
 
+        if patience > 0 and epochs_without_improvement >= patience:
+            print(
+                f"Early stopping at epoch {epoch}: "
+                f"no {selection_metric} improvement for {patience} epochs."
+            )
+            break
+
     append_experiment_log(
-        ROOT_DIR / args.experiment_log,
+        ROOT_DIR / experiment_log,
         {
             "timestamp_utc": utc_timestamp(),
-            "backbone": args.backbone,
-            "pretrained": args.pretrained,
-            "epochs": args.epochs,
-            "batch_size": args.batch_size,
-            "learning_rate": args.lr,
+            "backbone": backbone,
+            "pretrained": pretrained,
+            "epochs": epochs,
+            "completed_epochs": completed_epochs,
+            "batch_size": batch_size,
+            "learning_rate": learning_rate,
             "train_rows": len(train_subset),
             "val_rows": len(val_subset),
-            "max_train_samples": args.max_train_samples,
-            "max_val_samples": args.max_val_samples,
-            "class_weights": args.class_weights,
-            "sampler": args.sampler,
-            "balance_by": args.balance_by if args.sampler == "balanced" else "",
-            "selection_metric": args.selection_metric,
+            "max_train_samples": config.training.max_train_samples,
+            "max_val_samples": config.training.max_val_samples,
+            "class_weights": class_weights,
+            "sampler": sampler,
+            "balance_by": balance_by if sampler == "balanced" else "",
+            "selection_metric": selection_metric,
+            "patience": patience,
+            "min_delta": min_delta,
             "best_epoch": best_epoch,
             "best_score": best_score,
             "best_val_loss": best_val_metrics.loss if best_val_metrics else None,
@@ -245,11 +253,11 @@ def main() -> int:
             "final_val_adj_grade_acc": (
                 final_val_metrics.adjacent_grade_accuracy if final_val_metrics else None
             ),
-            "checkpoint_dir": args.checkpoint_dir,
+            "checkpoint_dir": checkpoint_dir,
         },
     )
 
-    print(f"Training run complete. Logged to {args.experiment_log}")
+    print(f"Training run complete. Logged to {experiment_log}")
     return 0
 
 
@@ -267,10 +275,16 @@ def _selection_score(metrics, selection_metric: str) -> float:
     raise ValueError(f"Unknown selection metric: {selection_metric}")
 
 
-def _is_better_score(current: float, best: float, selection_metric: str) -> bool:
+def _is_better_score(
+    current: float,
+    best: float,
+    selection_metric: str,
+    *,
+    min_delta: float = 0.0,
+) -> bool:
     if selection_metric == "loss":
-        return current < best
-    return current > best
+        return (best - current) > min_delta
+    return (current - best) > min_delta
 
 
 if __name__ == "__main__":

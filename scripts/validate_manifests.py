@@ -10,7 +10,12 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 SRC_DIR = ROOT_DIR / "src"
 sys.path.insert(0, str(SRC_DIR))
 
-from crop_grading.data.manifest import ManifestSummary, validate_manifest, validate_manifest_directory
+from crop_grading.data.manifest import (
+    ManifestSummary,
+    find_cross_split_duplicates,
+    validate_manifest,
+    validate_manifest_directory,
+)
 from crop_grading.utils.config import load_config
 
 
@@ -66,6 +71,18 @@ def main() -> int:
             print(f"  {issue.format()}")
         if not _allowed_missing_manifest(summary, args.allow_missing):
             has_errors = has_errors or not summary.is_valid
+
+    if not args.manifest:
+        duplicates = find_cross_split_duplicates(ROOT_DIR / config.data.metadata_dir)
+        if duplicates:
+            print("Cross-split duplicate image paths found:")
+            for image_path, splits in list(duplicates.items())[:20]:
+                print(f"  {image_path}: {', '.join(sorted(set(splits)))}")
+            if len(duplicates) > 20:
+                print(f"  ... and {len(duplicates) - 20} more")
+            has_errors = True
+        elif not has_errors:
+            print("Cross-split duplicate check: passed")
 
     return 1 if has_errors else 0
 

@@ -45,7 +45,7 @@ Do not create synthetic `B` labels from this dataset. Add `B` only when we have 
 ## Wheat Dataset
 
 - Local path: `data/raw/wheat`
-- Labels observed: `0_NOR`, `1_F&S`, `2_SD`, `3_MY`, `4_AP`, `5_BN`, `6_BP`, `7_IM`
+- Labels observed: `0_NOR`, `1_F_and_S`, `2_SD`, `3_MY`, `4_AP`, `5_BN`, `6_BP`, `7_IM`
 - XML metadata: `data/raw/wheat/wheat_tiny.xml`
 - Use: wheat quality grading bootstrap data
 - Confirmed: XML `DU_grain` labels match the image folder codes and all train/test IDs
@@ -53,14 +53,15 @@ Do not create synthetic `B` labels from this dataset. Add `B` only when we have 
   - `0_NOR` -> `A`
   - `5_BN`, `6_BP` -> `B`
   - `4_AP`, `2_SD` -> `C`
-  - `1_F&S`, `3_MY` -> `D`
+- Folder rename for Kaggle: original GrainSet code `F&S` is stored locally as `1_F_and_S`
+  - `1_F_and_S`, `3_MY` -> `D`
 - Excluded by default: `7_IM`, because impurities are non-grain contaminants rather than crop quality examples
 - Note: `mask/` appears to contain segmentation masks and should be excluded from classification manifests unless we intentionally build segmentation tooling
 
 ## Maize Dataset
 
 - Local path: `data/raw/maize`
-- Labels observed: `0_NOR`, `1_F&S`, `2_SD`, `3_MY`, `4_AP`, `5_BN`, `6_HD`, `7_IM`
+- Labels observed: `0_NOR`, `1_F_and_S`, `2_SD`, `3_MY`, `4_AP`, `5_BN`, `6_HD`, `7_IM`
 - XML metadata: `data/raw/maize/maize_tiny.xml`
 - Use: maize quality grading bootstrap data
 - Confirmed: XML `DU_grain` labels match the image folder codes and all train/test IDs
@@ -68,6 +69,7 @@ Do not create synthetic `B` labels from this dataset. Add `B` only when we have 
   - `0_NOR` -> `A`
   - `5_BN`, `6_HD` -> `B`
   - `4_AP`, `2_SD` -> `C`
-  - `1_F&S`, `3_MY` -> `D`
+- Folder rename for Kaggle: original GrainSet code `F&S` is stored locally as `1_F_and_S`
+  - `1_F_and_S`, `3_MY` -> `D`
 - Excluded by default: `7_IM`, because impurities are non-grain contaminants rather than crop quality examples
 - Note: `mask/` appears to contain segmentation masks and should be excluded from classification manifests unless we intentionally build segmentation tooling

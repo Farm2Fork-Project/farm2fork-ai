@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from crop_grading.training.losses import MultiTaskLoss
 from crop_grading.training.trainer import Trainer
+from scripts.train import _is_better_score
 
 
 class TinyModel(torch.nn.Module):
@@ -59,3 +60,9 @@ def test_trainer_runs_one_epoch_and_saves_checkpoint(tmp_path):
     assert checkpoint.exists()
     assert (tmp_path / "latest_model.pth").exists()
     assert (tmp_path / "best_model.pth").exists()
+
+
+def test_is_better_score_respects_min_delta():
+    assert _is_better_score(0.61, 0.60, "combined", min_delta=0.005)
+    assert not _is_better_score(0.601, 0.60, "combined", min_delta=0.005)
+    assert _is_better_score(0.59, 0.60, "loss", min_delta=0.005)

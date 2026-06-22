@@ -77,13 +77,13 @@ The XML confirms labels and numeric metadata. The DU class meanings used for gra
 Observed wheat classes:
 
 ```text
-0_NOR, 1_F&S, 2_SD, 3_MY, 4_AP, 5_BN, 6_BP, 7_IM
+0_NOR, 1_F_and_S, 2_SD, 3_MY, 4_AP, 5_BN, 6_BP, 7_IM
 ```
 
 Observed maize classes:
 
 ```text
-0_NOR, 1_F&S, 2_SD, 3_MY, 4_AP, 5_BN, 6_HD, 7_IM
+0_NOR, 1_F_and_S, 2_SD, 3_MY, 4_AP, 5_BN, 6_HD, 7_IM
 ```
 
 Market-grade mapping:
@@ -91,7 +91,7 @@ Market-grade mapping:
 - `NOR -> A`
 - `BN`, `BP`, `HD -> B`
 - `AP`, `SD -> C`
-- `F&S`, `MY -> D`
+- `F&S` / folder `1_F_and_S`, `MY -> D`
 - `IM` is excluded by default because it is contamination/non-grain matter, not a crop-quality image class
 
 ### XML `DU_grain` Counts
@@ -145,7 +145,7 @@ Market-grade mapping:
 | Split | Class | Count |
 |---|---|---:|
 | train | 0_NOR | 1078 |
-| train | 1_F&S | 137 |
+| train | 1_F_and_S | 137 |
 | train | 2_SD | 133 |
 | train | 3_MY | 105 |
 | train | 4_AP | 114 |
@@ -153,7 +153,7 @@ Market-grade mapping:
 | train | 6_BP | 29 |
 | train | 7_IM | 89 |
 | test | 0_NOR | 120 |
-| test | 1_F&S | 8 |
+| test | 1_F_and_S | 8 |
 | test | 2_SD | 13 |
 | test | 3_MY | 8 |
 | test | 4_AP | 9 |
@@ -166,7 +166,7 @@ Market-grade mapping:
 | Split | Class | Count |
 |---|---|---:|
 | train | 0_NOR | 278 |
-| train | 1_F&S | 20 |
+| train | 1_F_and_S | 20 |
 | train | 2_SD | 23 |
 | train | 3_MY | 25 |
 | train | 4_AP | 27 |
@@ -174,7 +174,7 @@ Market-grade mapping:
 | train | 6_HD | 29 |
 | train | 7_IM | 75 |
 | test | 0_NOR | 34 |
-| test | 1_F&S | 5 |
+| test | 1_F_and_S | 5 |
 | test | 2_SD | 4 |
 | test | 3_MY | 4 |
 | test | 4_AP | 3 |

@@ -27,19 +27,18 @@ from crop_grading.utils.config import load_config
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluate crop grading checkpoint.")
-    parser.add_argument("--manifest", default="data/metadata/test_labels.csv")
-    parser.add_argument("--checkpoint", default="models/checkpoints/best_model.pth")
-    parser.add_argument("--backbone", default="efficientnet_b0")
-    parser.add_argument("--batch-size", type=int, default=16)
-    parser.add_argument("--max-samples", type=int, default=None)
-    parser.add_argument("--no-progress", action="store_true", help="Disable progress bar.")
+    parser.add_argument("--config", default="configs/default.yaml")
     args = parser.parse_args()
 
-    config = load_config(ROOT_DIR / "configs/default.yaml")
+    config = load_config(ROOT_DIR / args.config)
+    manifest = config.data.test_manifest
+    checkpoint_arg = config.inference.checkpoint_path
+    backbone = config.model.backbone
+    batch_size = config.inference.batch_size
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     dataset = CropGradeDataset(
-        ROOT_DIR / args.manifest,
+        ROOT_DIR / manifest,
         project_root=ROOT_DIR,
         transform=build_eval_transforms(config.data.image_size),
     )
@@ -47,26 +46,36 @@ def main() -> int:
         dataset,
         sample_subset_indexes(
             dataset,
-            max_samples=args.max_samples,
+            max_samples=config.inference.max_samples,
             seed=config.project.seed,
         ),
     )
-    loader = DataLoader(subset, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    loader = DataLoader(
+        subset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=config.data.num_workers,
+    )
 
     model = CropGradingModel(
-        backbone_name=args.backbone,
+        backbone_name=backbone,
         num_crops=config.model.num_crops,
         num_grades=config.model.num_grades,
         dropout_rate=config.model.dropout_rate,
         pretrained=False,
     ).to(device)
 
-    checkpoint_path = ROOT_DIR / args.checkpoint
+    checkpoint_path = ROOT_DIR / checkpoint_arg
     checkpoint = torch.load(checkpoint_path, map_location=device)
     state_dict = checkpoint.get("model_state_dict", checkpoint)
     model.load_state_dict(state_dict)
 
-    result = evaluate_model(model, loader, device=device, show_progress=not args.no_progress)
+    result = evaluate_model(
+        model,
+        loader,
+        device=device,
+        show_progress=config.inference.show_progress,
+    )
     print(f"Checkpoint: {checkpoint_path.relative_to(ROOT_DIR)}")
     print(f"Device: {device}")
     print(f"Samples: {result.total_samples}")

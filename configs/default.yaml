@@ -6,6 +6,9 @@ data:
   raw_dir: data/raw
   processed_dir: data/processed
   metadata_dir: data/metadata
+  train_manifest: data/metadata/train_labels.csv
+  val_manifest: data/metadata/val_labels.csv
+  test_manifest: data/metadata/test_labels.csv
   image_size: 224
   num_workers: 4
   crops:
@@ -22,7 +25,7 @@ data:
     - D
 
 model:
-  backbone: efficientnet_b3
+  backbone: efficientnet_b0
   pretrained: true
   dropout_rate: 0.3
   num_crops: 6
@@ -36,7 +39,21 @@ training:
   crop_loss_weight: 0.4
   grade_loss_weight: 0.6
   warmup_epochs: 3
+  class_weights: grade
+  sampler: balanced
+  balance_by: grade
+  selection_metric: combined
+  patience: 8
+  min_delta: 0.001
+  max_train_samples:
+  max_val_samples:
+  show_progress: true
+  checkpoint_dir: models/checkpoints
+  experiment_log: outputs/experiments/training_runs.csv
 
 inference:
   confidence_threshold: 0.7
   checkpoint_path: models/checkpoints/best_model.pth
+  batch_size: 32
+  max_samples:
+  show_progress: true

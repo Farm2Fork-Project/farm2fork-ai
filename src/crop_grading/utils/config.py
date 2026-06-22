@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, PositiveInt, field_validator
@@ -20,6 +20,9 @@ class DataConfig(BaseModel):
     raw_dir: Path
     processed_dir: Path
     metadata_dir: Path
+    train_manifest: Path
+    val_manifest: Path
+    test_manifest: Path
     image_size: PositiveInt = 224
     num_workers: int = Field(default=4, ge=0)
     crops: list[str]
@@ -56,6 +59,17 @@ class TrainingConfig(BaseModel):
     crop_loss_weight: float = Field(default=0.4, ge=0.0)
     grade_loss_weight: float = Field(default=0.6, ge=0.0)
     warmup_epochs: int = Field(default=3, ge=0)
+    class_weights: Literal["none", "grade", "both"] = "grade"
+    sampler: Literal["random", "balanced"] = "balanced"
+    balance_by: Literal["crop_grade", "grade", "crop"] = "grade"
+    selection_metric: Literal["combined", "grade", "adjacent", "crop", "loss"] = "combined"
+    patience: int = Field(default=8, ge=0)
+    min_delta: float = Field(default=0.001, ge=0.0)
+    max_train_samples: int | None = Field(default=None, ge=1)
+    max_val_samples: int | None = Field(default=None, ge=1)
+    show_progress: bool = True
+    checkpoint_dir: Path
+    experiment_log: Path
 
     @field_validator("grade_loss_weight")
     @classmethod
@@ -69,6 +83,9 @@ class TrainingConfig(BaseModel):
 class InferenceConfig(BaseModel):
     confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
     checkpoint_path: Path
+    batch_size: PositiveInt = 32
+    max_samples: int | None = Field(default=None, ge=1)
+    show_progress: bool = True
 
 
 class AppConfig(BaseModel):

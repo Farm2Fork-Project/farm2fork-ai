@@ -64,7 +64,7 @@ python scripts/sanity_train_subset.py
 Run a small checkpointed training experiment:
 
 ```powershell
-python scripts/train.py --backbone efficientnet_b0 --epochs 2 --batch-size 8 --max-train-samples 256 --max-val-samples 128
+python scripts/train.py
 ```
 
 Add `--no-progress` to training or evaluation commands if you want plain logs only.
@@ -72,6 +72,7 @@ Training uses grade class weights by default. Use `--class-weights none` to disa
 `best_model.pth` is selected by a combined score by default: crop accuracy, adjacent grade accuracy, and exact grade accuracy.
 Use `--sampler balanced` to oversample rare crop-grade groups during training.
 Training runs are appended to `outputs/experiments/training_runs.csv`.
+Training supports early stopping with `--patience` and `--min-delta`; default patience is 8 epochs.
 
 Evaluate a checkpoint:
 
