@@ -25,6 +25,7 @@ from crop_grading.training.class_weights import compute_class_weights_from_subse
 from crop_grading.training.losses import MultiTaskLoss
 from crop_grading.training.trainer import Trainer
 from crop_grading.utils.config import load_config
+from crop_grading.utils.device import pick_device
 from crop_grading.utils.experiment_log import append_experiment_log, utc_timestamp
 
 
@@ -52,7 +53,7 @@ def main() -> int:
 
     torch.manual_seed(config.project.seed)
     random.seed(config.project.seed)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = pick_device()
 
     train_dataset = CropGradeDataset(
         ROOT_DIR / train_manifest,

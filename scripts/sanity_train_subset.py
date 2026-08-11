@@ -24,6 +24,7 @@ from crop_grading.models.multitask_model import CropGradingModel
 from crop_grading.training.losses import MultiTaskLoss
 from crop_grading.training.metrics import accuracy_from_logits
 from crop_grading.utils.config import load_config
+from crop_grading.utils.device import pick_device
 
 
 def main() -> int:
@@ -43,7 +44,7 @@ def main() -> int:
     batch_size = args.batch_size or config.training.batch_size
     learning_rate = args.lr or config.training.learning_rate
     torch.manual_seed(config.project.seed)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = pick_device()
 
     dataset = CropGradeDataset(
         ROOT_DIR / manifest,

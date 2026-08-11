@@ -23,6 +23,7 @@ from crop_grading.data.transforms import build_eval_transforms
 from crop_grading.models.multitask_model import CropGradingModel
 from crop_grading.training.evaluation import evaluate_model, format_confusion_matrix
 from crop_grading.utils.config import load_config
+from crop_grading.utils.device import pick_device
 
 
 def main() -> int:
@@ -35,7 +36,7 @@ def main() -> int:
     checkpoint_arg = config.inference.checkpoint_path
     backbone = config.model.backbone
     batch_size = config.inference.batch_size
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = pick_device()
 
     dataset = CropGradeDataset(
         ROOT_DIR / manifest,

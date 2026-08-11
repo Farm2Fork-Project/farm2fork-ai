@@ -89,10 +89,26 @@ def main() -> int:
     args = parser.parse_args()
 
     rows = []
+    included: list[str] = []
     for source in CONFIRMED_SOURCES:
+        if not (ROOT_DIR / source["root"]).is_dir():
+            print(f"[skip] {source['crop_label']}: missing {source['root']}")
+            continue
         rows.extend(collect_source_rows(source))
+        included.append(source["crop_label"])
     for source in GRAINSET_SOURCES:
+        if not (ROOT_DIR / source["root"] / "train").is_dir():
+            print(
+                f"[skip] {source['crop_label']}: missing {source['root']}/train "
+                "(GrainSet images not downloaded yet)"
+            )
+            continue
         rows.extend(collect_grainset_rows(source, include_impurities=args.include_impurities))
+        included.append(source["crop_label"])
+
+    if not rows:
+        print("No usable source datasets found under data/raw/. Nothing to build.")
+        return 1
 
     split_rows = split_by_crop_and_grade(rows, args.seed, args.train_ratio, args.val_ratio)
     metadata_dir = ROOT_DIR / args.metadata_dir
@@ -111,7 +127,7 @@ def main() -> int:
             return 1
 
     print("Bootstrap quality manifests created from confirmed mappings.")
-    print("Included: rice quality, mango grading, wheat GrainSet, and maize GrainSet.")
+    print(f"Included crops: {', '.join(included)}.")
     if not args.include_impurities:
         print("Excluded: GrainSet 7_IM impurity images.")
     return 0
