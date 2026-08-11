@@ -32,9 +32,15 @@ from crop_grading.utils.experiment_log import append_experiment_log, utc_timesta
 def main() -> int:
     parser = argparse.ArgumentParser(description="Train crop quality grading model.")
     parser.add_argument("--config", default="configs/default.yaml")
+    parser.add_argument("--seed", type=int, default=None, help="Override project.seed.")
+    parser.add_argument("--checkpoint-dir", default=None, help="Override training.checkpoint_dir.")
     args = parser.parse_args()
 
     config = load_config(ROOT_DIR / args.config)
+    if args.seed is not None:
+        config.project.seed = args.seed
+    if args.checkpoint_dir is not None:
+        config.training.checkpoint_dir = args.checkpoint_dir
     train_manifest = config.data.train_manifest
     val_manifest = config.data.val_manifest
     backbone = config.model.backbone

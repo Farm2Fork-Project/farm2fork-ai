@@ -39,9 +39,12 @@ from crop_grading.utils.device import pick_device
 def main() -> int:
     parser = argparse.ArgumentParser(description="Per-crop grade metrics.")
     parser.add_argument("--config", default="configs/four_crops_dedup_15ep.yaml")
+    parser.add_argument("--checkpoint", default=None, help="Override inference.checkpoint_path.")
     args = parser.parse_args()
 
     config = load_config(ROOT_DIR / args.config)
+    if args.checkpoint is not None:
+        config.inference.checkpoint_path = args.checkpoint
     device = pick_device()
 
     model = CropGradingModel(
