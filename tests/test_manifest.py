@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from crop_grading.data.manifest import validate_manifest
+from crop_grading.data.manifest import find_cross_split_duplicates, validate_manifest
 
 
 def write_manifest(path: Path, rows: list[dict[str, str]]) -> None:
@@ -67,3 +67,25 @@ def test_validate_manifest_reports_bad_labels_and_missing_file(tmp_path: Path) -
     assert "invalid grade_label: Z" in messages
     assert "invalid split: training" in messages
     assert "source is required" in messages
+
+
+def test_find_cross_split_duplicates(tmp_path: Path) -> None:
+    metadata_dir = tmp_path / "metadata"
+    metadata_dir.mkdir()
+    common_header = "image_path,crop_label,grade_label,source,split\n"
+    (metadata_dir / "train_labels.csv").write_text(
+        common_header + "same.jpg,rice,A,unit,train\n",
+        encoding="utf-8",
+    )
+    (metadata_dir / "val_labels.csv").write_text(
+        common_header + "same.jpg,rice,A,unit,val\n",
+        encoding="utf-8",
+    )
+    (metadata_dir / "test_labels.csv").write_text(
+        common_header + "other.jpg,rice,A,unit,test\n",
+        encoding="utf-8",
+    )
+
+    duplicates = find_cross_split_duplicates(metadata_dir)
+
+    assert duplicates == {"same.jpg": ["train", "val"]}
