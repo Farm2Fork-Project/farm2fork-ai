@@ -1,0 +1,12 @@
+.git
+.venv
+venv
+data/raw
+data/processed
+outputs
+runs
+wandb
+**/__pycache__
+.pytest_cache
+.ruff_cache
+models/checkpoints

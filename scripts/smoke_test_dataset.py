@@ -20,17 +20,25 @@ from crop_grading.utils.config import load_config
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Load one dataset batch from a manifest.")
-    parser.add_argument("--manifest", default="data/metadata/train_labels.csv")
-    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--config", default="configs/default.yaml")
+    parser.add_argument("--manifest", default=None)
+    parser.add_argument("--batch-size", type=int, default=None)
     args = parser.parse_args()
 
-    config = load_config(ROOT_DIR / "configs/default.yaml")
+    config = load_config(ROOT_DIR / args.config)
+    manifest = args.manifest or config.data.train_manifest
+    batch_size = args.batch_size or config.training.batch_size
     dataset = CropGradeDataset(
-        ROOT_DIR / args.manifest,
+        ROOT_DIR / manifest,
         project_root=ROOT_DIR,
         transform=build_eval_transforms(config.data.image_size),
     )
-    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=config.data.num_workers,
+    )
     batch = next(iter(loader))
 
     crop_counts = _count_labels(batch["crop_label"].tolist(), CROP_INDEX_TO_LABEL)

@@ -36,6 +36,7 @@ data/processed/
 !data/metadata/
 !data/metadata/README.md
 data/metadata/*.csv
+*.zip
 
 # Model artifacts
 models/backbone/

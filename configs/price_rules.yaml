@@ -1,0 +1,52 @@
+# Rule-based price fallback (master context 10.3): used until a model is trained
+# on real Pakistani commodity series (Pakistan Bureau of Statistics / AMIS).
+#
+# IMPORTANT: the ranges below are ILLUSTRATIVE DEVELOPMENT DEFAULTS, not
+# sourced market data. Replace them with PBS/AMIS figures before any real use.
+# Every response from this rule set is labelled method="rule_based" with a
+# confidence at or below 0.5 so clients cannot mistake it for a market model.
+#
+# Prices are PKR per kilogram (per litre for dairy). Units are converted below.
+version: price-rules-v1
+max_confidence: 0.45
+
+crops:            # used when the product name mentions a known crop
+  wheat:     {min: 90,  max: 110}
+  rice:      {min: 180, max: 380}
+  maize:     {min: 60,  max: 85}
+  mango:     {min: 140, max: 320}
+  cotton:    {min: 170, max: 230}
+  sugarcane: {min: 9,   max: 13}
+
+categories:       # fallback by marketplace category
+  vegetables: {min: 60,  max: 200}
+  fruits:     {min: 100, max: 320}
+  grains:     {min: 80,  max: 380}
+  dairy:      {min: 180, max: 260}
+
+# Relative seasonal pressure by month (1 = neutral). Harvest months push
+# prices down, lean months up. Keyed by category; crops use their category.
+seasonal:
+  vegetables: [1.10, 1.05, 0.95, 0.90, 0.95, 1.05, 1.10, 1.10, 1.05, 0.95, 0.90, 1.00]
+  fruits:     [1.10, 1.10, 1.05, 1.00, 0.95, 0.85, 0.85, 0.90, 1.00, 1.05, 1.10, 1.10]
+  grains:     [1.05, 1.05, 1.00, 0.90, 0.90, 0.95, 1.00, 1.00, 1.00, 1.00, 1.05, 1.05]
+  dairy:      [0.95, 0.95, 1.00, 1.05, 1.10, 1.10, 1.05, 1.00, 1.00, 0.95, 0.95, 0.95]
+
+crop_category:
+  wheat: grains
+  rice: grains
+  maize: grains
+  cotton: grains
+  sugarcane: grains
+  mango: fruits
+
+# Quality grade adjustment (A premium, D discount).
+grade_multiplier: {A: 1.10, B: 1.00, C: 0.88, D: 0.75}
+
+# Unit conversion to the base unit above.
+unit_factor:
+  kg: 1
+  ton: 1000
+  litre: 1
+  dozen: null      # not convertible from a per-kg range: no estimate
+  piece: null
