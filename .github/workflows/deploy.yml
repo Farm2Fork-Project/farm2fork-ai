@@ -42,6 +42,8 @@ jobs:
     environment: production
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -59,6 +61,19 @@ jobs:
         env:
           SOURCE_SHA: ${{ github.sha }}
         run: docker save "farm2fork-ai:$SOURCE_SHA" | gzip -1 > image.tar.gz
+      - name: Prepare manifest
+        run: python3 .github/scripts/publish-release.py ai --prepare
+      - name: Sign artifact and manifest provenance
+        id: provenance
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-path: |
+            image.tar.gz
+            manifest.json
+      - name: Preserve signed bundle
+        env:
+          BUNDLE_PATH: ${{ steps.provenance.outputs.bundle-path }}
+        run: cp "$BUNDLE_PATH" attestation.json
       - name: Publish complete release
         env:
           GH_TOKEN: ${{ github.token }}
