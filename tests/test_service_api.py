@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from crop_grading.models.conditioned_model import CropConditionedGradeModel
+from crop_grading.models.multitask_model import CropGradingModel
 
 
 def _jpeg(color=(200, 150, 40), size=(320, 240)) -> bytes:
@@ -23,6 +24,7 @@ def _jpeg(color=(200, 150, 40), size=(320, 240)) -> bytes:
 def make_client(monkeypatch, tmp_path):
     def build(**env: str) -> TestClient:
         monkeypatch.setenv("MODEL_CHECKPOINT", str(tmp_path / "missing.pth"))
+        monkeypatch.setenv("ALLOW_UNTRAINED_MODEL", "true")
         for key, value in env.items():
             monkeypatch.setenv(key, value)
         from crop_grading.service.app import app
@@ -68,13 +70,99 @@ def test_loads_a_training_checkpoint_and_reports_trained(make_client, tmp_path):
         graded = client.post(
             "/predict/quality",
             files={"image": ("wheat.png", _jpeg(), "image/jpeg")},
-            data={"crop": "cotton"},
+            data={"crop": "wheat"},
         ).json()
     assert health["qualityModel"] == "trained"
     assert not health["qualityModelVersion"].endswith("untrained")
     assert graded["modelStatus"] == "trained"
-    # Cotton has no training data yet: the service says so.
-    assert graded["cropSupported"] is False
+    assert graded["cropSupported"] is True
+
+
+@pytest.mark.parametrize("crop", ["other", "cotton", "sugarcane", "banana"])
+def test_unsupported_crop_never_calls_grader(make_client, monkeypatch, crop):
+    from crop_grading.service.grading import QualityGrader
+
+    calls = []
+    monkeypatch.setattr(QualityGrader, "grade", lambda *args: calls.append(args))
+    with make_client() as client:
+        response = client.post(
+            "/predict/quality",
+            files={"image": ("x.jpg", _jpeg(), "image/jpeg")},
+            data={"crop": crop},
+        )
+    assert response.status_code == 422
+    assert calls == []
+    assert "qualityGrade" not in response.json()
+
+
+def test_grade_only_checkpoint_serves_selected_crop_without_crop_recognition(make_client, tmp_path):
+    model = CropGradingModel(backbone_name="efficientnet_b0", pretrained=False)
+    checkpoint = tmp_path / "grade_only.pth"
+    torch.save({"model_state_dict": model.state_dict()}, checkpoint)
+    with make_client(MODEL_CHECKPOINT=str(checkpoint)) as client:
+        health = client.get("/health").json()
+        response = client.post(
+            "/predict/quality",
+            files={"image": ("rice.jpg", _jpeg(), "image/jpeg")},
+            data={"crop": "rice"},
+        )
+    assert health["qualityModel"] == "trained"
+    assert health["qualityModelVersion"].startswith("grade-only-")
+    assert response.status_code == 200
+    assert response.json()["crop"] == "rice"
+    assert response.json()["cropSupported"] is True
+
+
+def test_direct_grader_rejects_known_but_untrained_crop(make_client):
+    from crop_grading.service.grading import QualityGrader
+    from crop_grading.service.settings import ServiceSettings
+
+    with make_client():
+        grader = QualityGrader(ServiceSettings.from_env())
+        with pytest.raises(ValueError, match="not supported"):
+            grader.grade(_jpeg(), "cotton")
+
+
+def test_default_settings_never_enable_random_grades(monkeypatch, tmp_path):
+    from crop_grading.service.grading import ModelUnavailableError, QualityGrader
+    from crop_grading.service.settings import ServiceSettings
+
+    monkeypatch.delenv("ALLOW_UNTRAINED_MODEL", raising=False)
+    monkeypatch.setenv("MODEL_CHECKPOINT", str(tmp_path / "absent.pth"))
+    settings = ServiceSettings.from_env()
+    assert settings.allow_untrained is False
+    with pytest.raises(ModelUnavailableError):
+        QualityGrader(settings)
+
+
+def test_configuration_cannot_claim_training_on_cotton(monkeypatch):
+    from crop_grading.service.settings import ServiceSettings
+
+    monkeypatch.setenv("MODEL_TRAINED_CROPS", "wheat,cotton")
+    with pytest.raises(ValueError, match="MODEL_TRAINED_CROPS"):
+        ServiceSettings.from_env()
+
+
+def test_mismatched_checkpoint_disables_grading_without_breaking_pricing(make_client, tmp_path):
+    checkpoint = tmp_path / "invalid.pth"
+    torch.save({"model_state_dict": {"wrong.weight": torch.zeros(1)}}, checkpoint)
+    with make_client(MODEL_CHECKPOINT=str(checkpoint), ALLOW_UNTRAINED_MODEL="false") as client:
+        assert client.get("/health").json()["qualityModel"] == "unavailable"
+        assert (
+            client.post(
+                "/predict/quality",
+                files={"image": ("x.jpg", _jpeg(), "image/jpeg")},
+                data={"crop": "wheat"},
+            ).status_code
+            == 503
+        )
+        assert (
+            client.post(
+                "/predict/price",
+                json={"productName": "Wheat", "category": "grains", "unit": "kg"},
+            ).status_code
+            == 200
+        )
 
 
 def test_refuses_to_serve_untrained_when_disabled(make_client):

@@ -19,11 +19,13 @@ RUN pip install ".[api]" "timm>=0.9.12" "numpy>=1.26.0"
 
 COPY configs ./configs
 
-# Trained weights are not in git. Mount or copy them to this path; without
-# them the service runs in its labelled "untrained" preview mode.
-RUN mkdir -p models/checkpoints/grade_cond_dedup
-ENV MODEL_CHECKPOINT=/app/models/checkpoints/grade_cond_dedup/best_model.pth \
-    MODEL_CONFIG=/app/configs/four_crops_dedup_15ep.yaml \
+# Mount an independently verified trained artifact. Missing weights disable grading.
+RUN mkdir -p models
+ENV MODEL_CHECKPOINT=/app/models/best_model.pth \
+    MODEL_CONFIG=/app/configs/grade_only_four_crops_dedup_15ep.yaml \
+    ALLOW_UNTRAINED_MODEL=false \
+    OMP_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
     PRICE_RULES=/app/configs/price_rules.yaml
 
 RUN useradd --create-home --uid 10001 app && chown -R app /app

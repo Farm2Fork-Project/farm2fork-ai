@@ -2,20 +2,20 @@
 
 AI-powered crop quality grading pipeline for Farm2Fork.
 
-The first MVP targets six Pakistani crops:
+The grading MVP supports four crops selected explicitly by the farmer:
 
 - wheat
 - rice
 - mango
 - maize
-- cotton
-- sugarcane
-
-Each crop is graded as `A`, `B`, `C`, or `D`.
+Supported photos receive an optional `A`, `B`, `C`, or `D` model suggestion, confirmed by
+the farmer. **Other crop** is a client-side selection that skips quality inference; unsupported
+direct requests are rejected. Cotton and sugarcane have no grading training data.
 
 ## Current Status
 
-This repository is scaffolded for model training, inference, and API deployment. The active implementation plan lives in [plan/crop_grading_implementation_plan.md](plan/crop_grading_implementation_plan.md).
+The MVP serving flow and release artifact are documented in [docs/mvp-grading.md](docs/mvp-grading.md).
+The research scripts and historical implementation plan remain available.
 
 ## Inference service (FastAPI)
 
@@ -28,13 +28,13 @@ The service in `src/crop_grading/service/` is what the Farm2Fork backend calls
 | `POST /predict/quality` | Multipart `image` + `crop` → grade A–D, probabilities, confidence |
 | `POST /predict/price` | Product facts → rule-based PKR range per unit (`method: rule_based`) |
 
-**Quality model.** Serves `CropConditionedGradeModel`: the farmer states the
-crop and the model grades it. It loads the checkpoint written by
-`scripts/train_grade_conditioned.py` (`models/checkpoints/grade_cond_dedup/best_model.pth`).
-Until that file exists, the service runs in **untrained preview mode**. Every
-response then says `"modelStatus": "untrained"` and the apps label the grade as
-a preview. Drop the trained file in place and restart; the API does not change.
-Set `ALLOW_UNTRAINED_MODEL=false` to refuse grading (503) instead.
+**Quality model.** The default is the frozen plain grade-only EfficientNet-B0 seed-42
+checkpoint. The farmer supplies the crop; crop recognition is not required. The service
+also loads legacy crop-conditioned checkpoints to permit gradual rollout/rollback.
+Missing or mismatched weights make grading unavailable (503), while prices still work.
+Explicit `ALLOW_UNTRAINED_MODEL=true` enables labeled development previews only.
+The supplied-photo diagnostic showed poor transfer; suggestions require farmer confirmation
+and must not be described as certified assessments or 92.8% field accuracy.
 
 **Price estimate.** There is no trained price model yet. `configs/price_rules.yaml`
 implements the rule-based fallback from master context 10.3: crop or category
@@ -51,10 +51,10 @@ docker build -t farm2fork-ai . && docker run -p 8000:8000 farm2fork-ai
 
 | Variable | Default |
 | --- | --- |
-| `MODEL_CHECKPOINT` | `models/checkpoints/grade_cond_dedup/best_model.pth` |
-| `MODEL_CONFIG` | `configs/four_crops_dedup_15ep.yaml` |
+| `MODEL_CHECKPOINT` | `models/checkpoints/grade_only_four_crops_dedup_15ep/best_model.pth` (Docker: `/app/models/best_model.pth`) |
+| `MODEL_CONFIG` | `configs/grade_only_four_crops_dedup_15ep.yaml` |
 | `MODEL_TRAINED_CROPS` | `wheat,rice,mango,maize` (drives `cropSupported`) |
-| `ALLOW_UNTRAINED_MODEL` | `true` |
+| `ALLOW_UNTRAINED_MODEL` | `false` |
 | `AI_SERVICE_TOKEN` | unset; when set, `/predict/*` requires header `X-Internal-Token` |
 | `MAX_IMAGE_BYTES` | `8388608` |
 
