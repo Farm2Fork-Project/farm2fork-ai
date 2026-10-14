@@ -1,9 +1,7 @@
-"""Quality grading around the crop-conditioned grade model.
+"""Optional image grading for a farmer-selected, supported crop.
 
-The farmer states the crop when listing, so the service serves
-`CropConditionedGradeModel` (grade-only, conditioned on the crop) rather than
-the multi-task model. The checkpoint format is exactly what
-`scripts/train_grade_conditioned.py` writes: {"model_state_dict": ...}.
+The MVP uses the plain grade-only checkpoint. The crop is supplied and checked,
+not predicted. Legacy conditioned weights remain loadable for rollout/rollback.
 
 When no trained checkpoint exists yet the service can still run in an explicit
 "untrained" mode so the rest of the platform can be tested end to end. Every
@@ -23,9 +21,10 @@ import torch
 import torch.nn.functional as F
 from PIL import Image, UnidentifiedImageError
 
-from crop_grading.constants import CROP_CLASSES, CROP_LABEL_TO_INDEX, GRADE_CLASSES
+from crop_grading.constants import CROP_LABEL_TO_INDEX, GRADE_CLASSES
 from crop_grading.data.transforms import build_eval_transforms
 from crop_grading.models.conditioned_model import CropConditionedGradeModel
+from crop_grading.models.multitask_model import CropGradingModel
 from crop_grading.service.settings import ServiceSettings
 from crop_grading.utils.config import load_config
 
@@ -60,32 +59,53 @@ class QualityGrader:
         self._transform = build_eval_transforms(self.image_size)
         self._lock = threading.Lock()
 
-        # pretrained=False: never download backbone weights at serve time; the
-        # trained checkpoint carries all of them.
-        model = CropConditionedGradeModel(
-            backbone_name=config.model.backbone,
-            num_crops=config.model.num_crops,
-            num_grades=config.model.num_grades,
-            crop_embed_dim=settings.crop_embed_dim,
-            dropout_rate=config.model.dropout_rate,
-            pretrained=False,
-        )
-
+        state = None
         if settings.checkpoint_path.is_file():
-            checkpoint = torch.load(settings.checkpoint_path, map_location="cpu", weights_only=True)
-            model.load_state_dict(checkpoint.get("model_state_dict", checkpoint))
+            try:
+                checkpoint = torch.load(
+                    settings.checkpoint_path, map_location="cpu", weights_only=True
+                )
+                state = checkpoint.get("model_state_dict", checkpoint)
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise ModelUnavailableError(
+                    "The configured model checkpoint could not be loaded."
+                ) from exc
+            self._conditioned = "crop_embed.weight" in state
             self.status = MODEL_STATUS_TRAINED
             digest = hashlib.sha256(settings.checkpoint_path.read_bytes()).hexdigest()[:8]
-            default_version = f"grade-cond-{config.model.backbone}-{digest}"
         elif settings.allow_untrained:
-            torch.manual_seed(0)  # deterministic preview outputs
+            torch.manual_seed(0)
+            self._conditioned = False
             self.status = MODEL_STATUS_UNTRAINED
-            default_version = f"grade-cond-{config.model.backbone}-untrained"
+            digest = "untrained"
         else:
             raise ModelUnavailableError(
                 f"No trained checkpoint at {settings.checkpoint_path} and "
                 "ALLOW_UNTRAINED_MODEL is false."
             )
+
+        # Both constructors use pretrained=False: serving never downloads weights.
+        parameters = {
+            "backbone_name": config.model.backbone,
+            "num_crops": config.model.num_crops,
+            "num_grades": config.model.num_grades,
+            "dropout_rate": config.model.dropout_rate,
+            "pretrained": False,
+        }
+        model = (
+            CropConditionedGradeModel(**parameters, crop_embed_dim=settings.crop_embed_dim)
+            if self._conditioned
+            else CropGradingModel(**parameters)
+        )
+        if state is not None:
+            try:
+                model.load_state_dict(state)
+            except (RuntimeError, TypeError) as exc:
+                raise ModelUnavailableError(
+                    "The checkpoint does not match the model configuration."
+                ) from exc
+        prefix = "grade-cond" if self._conditioned else "grade-only"
+        default_version = f"{prefix}-{config.model.backbone}-{digest}"
 
         self.version = settings.model_version or default_version
         self._model = model.eval()
@@ -95,9 +115,9 @@ class QualityGrader:
         return self._settings.trained_crops
 
     def grade(self, image_bytes: bytes, crop: str) -> GradePrediction:
-        crop = crop.lower()
-        if crop not in CROP_LABEL_TO_INDEX:
-            raise ValueError(f"Unknown crop '{crop}'. Expected one of {', '.join(CROP_CLASSES)}.")
+        crop = crop.strip().lower()
+        if crop not in self.trained_crops:
+            raise ValueError(f"Crop '{crop}' is not supported for grading.")
         try:
             image = Image.open(io.BytesIO(image_bytes))
             image.verify()  # cheap structural check before a full decode
@@ -108,7 +128,10 @@ class QualityGrader:
         tensor = self._transform(image).unsqueeze(0)
         crop_index = torch.tensor([CROP_LABEL_TO_INDEX[crop]])
         with self._lock, torch.no_grad():
-            probs = F.softmax(self._model(tensor, crop_index), dim=1)[0]
+            logits = (
+                self._model(tensor, crop_index) if self._conditioned else self._model(tensor)[1]
+            )
+            probs = F.softmax(logits, dim=1)[0]
 
         best = int(torch.argmax(probs).item())
         confidence = float(probs[best].item())
