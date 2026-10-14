@@ -3,6 +3,9 @@
 CROP_CLASSES = ("wheat", "rice", "mango", "maize", "cotton", "sugarcane")
 GRADE_CLASSES = ("A", "B", "C", "D")
 
+# Training contains these crops only. Do not infer support from six-way head size.
+SUPPORTED_GRADE_CROPS = ("wheat", "rice", "mango", "maize")
+
 CROP_LABEL_TO_INDEX = {label: index for index, label in enumerate(CROP_CLASSES)}
 CROP_INDEX_TO_LABEL = {index: label for label, index in CROP_LABEL_TO_INDEX.items()}
 

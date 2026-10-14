@@ -22,7 +22,7 @@ from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field
 
-from crop_grading.constants import CROP_CLASSES
+from crop_grading.constants import SUPPORTED_GRADE_CROPS
 from crop_grading.service.grading import (
     InvalidImageError,
     ModelUnavailableError,
@@ -117,18 +117,20 @@ class QualityResponse(BaseModel):
 async def predict_quality(
     request: Request,
     image: Annotated[UploadFile, File(description="Photo of the produce (JPEG/PNG/WebP)")],
-    crop: Annotated[str, Form(description=f"One of: {', '.join(CROP_CLASSES)}")],
+    crop: Annotated[
+        str, Form(description=f"Farmer-selected crop: {', '.join(SUPPORTED_GRADE_CROPS)}")
+    ],
 ) -> QualityResponse:
+    crop = crop.strip().lower()
+    if crop not in request.app.state.settings.trained_crops:
+        raise HTTPException(
+            422,
+            "Grading is available only for selected supported crops: "
+            f"{', '.join(request.app.state.settings.trained_crops)}. Other crops are not graded.",
+        )
     grader: QualityGrader | None = request.app.state.grader
     if grader is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, request.app.state.grader_error)
-
-    crop = crop.strip().lower()
-    if crop not in CROP_CLASSES:
-        raise HTTPException(
-            422,
-            f"Unknown crop '{crop}'. Expected one of: {', '.join(CROP_CLASSES)}.",
-        )
     if image.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Upload a JPEG, PNG or WebP photo."
