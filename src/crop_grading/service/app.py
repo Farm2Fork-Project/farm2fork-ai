@@ -3,7 +3,7 @@
 Endpoints
 - GET  /health            liveness + which model is loaded and whether it is trained
 - POST /predict/quality   multipart: image + crop  -> grade A-D with probabilities
-- POST /predict/price     JSON product facts       -> rule-based PKR range per unit
+- POST /predict/price     JSON product facts       -> dated official wholesale PKR range per unit
 
 Run:  uvicorn crop_grading.service.app:app --host 0.0.0.0 --port 8000
 
@@ -28,7 +28,7 @@ from crop_grading.service.grading import (
     ModelUnavailableError,
     QualityGrader,
 )
-from crop_grading.service.pricing import PriceNotEstimableError, PriceRules
+from crop_grading.service.pricing import OfficialPrices, PriceNotEstimableError
 from crop_grading.service.settings import ServiceSettings
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
@@ -38,7 +38,7 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 async def lifespan(app: FastAPI):
     settings = ServiceSettings.from_env()
     app.state.settings = settings
-    app.state.prices = PriceRules(settings.price_rules_path)
+    app.state.prices = OfficialPrices(settings.official_prices_path)
     try:
         app.state.grader = QualityGrader(settings)
         app.state.grader_error = None
@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Farm2Fork AI service",
     version="1.0.0",
-    description="Crop quality grading and rule-based price estimates.",
+    description="Crop quality grading and official wholesale price references.",
     lifespan=lifespan,
 )
 
@@ -75,9 +75,12 @@ class HealthResponse(BaseModel):
     status: Literal["ok"]
     qualityModel: Literal["trained", "untrained", "unavailable"]
     qualityModelVersion: str | None
+    photoCheck: Literal["enabled", "unavailable"] = Field(
+        description="Whether unfamiliar photos can be detected and referred for review."
+    )
     trainedCrops: list[str]
     priceModelVersion: str
-    priceMethod: Literal["rule_based"]
+    priceMethod: Literal["official_wholesale"]
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -87,9 +90,10 @@ def health(request: Request) -> HealthResponse:
         status="ok",
         qualityModel=grader.status if grader else "unavailable",
         qualityModelVersion=grader.version if grader else None,
+        photoCheck="enabled" if grader and grader.photo_reference else "unavailable",
         trainedCrops=list(request.app.state.settings.trained_crops),
         priceModelVersion=request.app.state.prices.version,
-        priceMethod="rule_based",
+        priceMethod="official_wholesale",
     )
 
 
@@ -105,6 +109,13 @@ class QualityResponse(BaseModel):
         description="False when the model has not been trained on this crop yet."
     )
     lowConfidence: bool
+    needsReview: bool = Field(
+        description="True when the grade must not be shown: ask for a retake or a manual grade."
+    )
+    reviewReason: Literal["low_confidence", "unfamiliar_photo", "photo_check_unavailable"] | None
+    photoSimilarity: float | None = Field(
+        description="Similarity to the training photos (higher is more familiar)."
+    )
     modelStatus: Literal["trained", "untrained"]
     modelVersion: str
 
@@ -156,6 +167,9 @@ async def predict_quality(
         crop=crop,
         cropSupported=crop in grader.trained_crops,
         lowConfidence=prediction.low_confidence,
+        needsReview=prediction.needs_review,
+        reviewReason=prediction.review_reason,
+        photoSimilarity=prediction.photo_similarity,
         modelStatus=grader.status,
         modelVersion=grader.version,
     )
@@ -170,9 +184,8 @@ class PriceRequest(BaseModel):
     unit: str = Field(min_length=1, max_length=16)
     quantity: float | None = Field(default=None, gt=0)
     qualityGrade: Literal["A", "B", "C", "D"] | None = None
-    location: str | None = Field(default=None, max_length=120)
-    asOf: date | None = Field(
-        default=None, description="Day to price for (defaults to today); drives seasonality."
+    location: str | None = Field(
+        default=None, max_length=120, description="Farmer's city; its own mandi is used if it reported."
     )
 
 
@@ -181,13 +194,14 @@ class PriceResponse(BaseModel):
     predictedMaxPrice: float
     unit: str
     currency: Literal["PKR"] = "PKR"
-    confidenceScore: float
     modelVersion: str
-    method: Literal["rule_based"] = "rule_based"
-    basis: Literal["crop", "category"]
-    matchedCrop: str | None
-    seasonalFactor: float
-    gradeFactor: float
+    method: Literal["official_wholesale"] = "official_wholesale"
+    commodity: str = Field(description="Official commodity name(s) the range comes from.")
+    observedOn: date = Field(description="Mandi trading day of the prices.")
+    marketScope: str = Field(description="The farmer's market, or Punjab for the middle half of markets.")
+    marketCount: int
+    source: str
+    sourceUrl: str
 
 
 @app.post(
@@ -196,13 +210,10 @@ class PriceResponse(BaseModel):
     dependencies=[Depends(require_internal_token)],
 )
 def predict_price(request: Request, body: PriceRequest) -> PriceResponse:
+    prices: OfficialPrices = request.app.state.prices
     try:
-        estimate = request.app.state.prices.estimate(
-            product_name=body.productName,
-            category=body.category,
-            unit=body.unit,
-            quality_grade=body.qualityGrade,
-            on=body.asOf,
+        estimate = prices.estimate(
+            product_name=body.productName, unit=body.unit, location=body.location
         )
     except PriceNotEstimableError as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -211,10 +222,11 @@ def predict_price(request: Request, body: PriceRequest) -> PriceResponse:
         predictedMinPrice=estimate.min_price,
         predictedMaxPrice=estimate.max_price,
         unit=estimate.unit,
-        confidenceScore=estimate.confidence,
-        modelVersion=estimate.model_version,
-        basis=estimate.basis,
-        matchedCrop=estimate.matched_crop,
-        seasonalFactor=estimate.seasonal_factor,
-        gradeFactor=estimate.grade_factor,
+        modelVersion=estimate.version,
+        commodity=estimate.commodity,
+        observedOn=estimate.observed_on,
+        marketScope=estimate.market_scope,
+        marketCount=estimate.market_count,
+        source=prices.source,
+        sourceUrl=prices.source_url,
     )

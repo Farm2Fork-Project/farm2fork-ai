@@ -31,7 +31,8 @@ class ServiceSettings:
 
     checkpoint_path: Path
     config_path: Path
-    price_rules_path: Path
+    official_prices_path: Path
+    photo_reference_path: Path
     crop_embed_dim: int
     allow_untrained: bool
     service_token: str | None
@@ -56,7 +57,12 @@ class ServiceSettings:
             config_path=_resolve(
                 os.environ.get("MODEL_CONFIG", "configs/grade_only_four_crops_dedup_15ep.yaml")
             ),
-            price_rules_path=_resolve(os.environ.get("PRICE_RULES", "configs/price_rules.yaml")),
+            official_prices_path=_resolve(
+                os.environ.get("OFFICIAL_PRICES", "configs/official_prices.json")
+            ),
+            photo_reference_path=_resolve(
+                os.environ.get("MODEL_PHOTO_REFERENCE", "reference/photo_reference.npz")
+            ),
             crop_embed_dim=int(os.environ.get("MODEL_CROP_EMBED_DIM", "16")),
             allow_untrained=_env_bool("ALLOW_UNTRAINED_MODEL", False),
             service_token=os.environ.get("AI_SERVICE_TOKEN") or None,

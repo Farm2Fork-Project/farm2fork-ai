@@ -25,11 +25,20 @@ from crop_grading.constants import CROP_LABEL_TO_INDEX, GRADE_CLASSES
 from crop_grading.data.transforms import build_eval_transforms
 from crop_grading.models.conditioned_model import CropConditionedGradeModel
 from crop_grading.models.multitask_model import CropGradingModel
+from crop_grading.service.photo_reference import (
+    PhotoReference,
+    PhotoReferenceError,
+    weights_fingerprint,
+)
 from crop_grading.service.settings import ServiceSettings
 from crop_grading.utils.config import load_config
 
 MODEL_STATUS_TRAINED = "trained"
 MODEL_STATUS_UNTRAINED = "untrained"
+
+REVIEW_LOW_CONFIDENCE = "low_confidence"
+REVIEW_UNFAMILIAR_PHOTO = "unfamiliar_photo"
+REVIEW_PHOTO_CHECK_UNAVAILABLE = "photo_check_unavailable"
 
 
 class InvalidImageError(ValueError):
@@ -46,6 +55,13 @@ class GradePrediction:
     confidence: float
     probabilities: dict[str, float]
     low_confidence: bool
+    photo_similarity: float | None
+    # Set when the grade must not be shown: the farmer retakes or grades manually.
+    review_reason: str | None
+
+    @property
+    def needs_review(self) -> bool:
+        return self.review_reason is not None
 
 
 class QualityGrader:
@@ -104,6 +120,20 @@ class QualityGrader:
                 raise ModelUnavailableError(
                     "The checkpoint does not match the model configuration."
                 ) from exc
+        # Only a trained grade-only model has a reference; anything else is
+        # graded but always referred, so its grades are never shown as results.
+        self.photo_reference: PhotoReference | None = None
+        self.photo_reference_error: str | None = None
+        if state is not None and not self._conditioned:
+            try:
+                self.photo_reference = PhotoReference.load(
+                    settings.photo_reference_path, weights_fingerprint(state)
+                )
+            except PhotoReferenceError as exc:
+                self.photo_reference_error = str(exc)
+        elif state is not None:
+            self.photo_reference_error = "Photo checks require the grade-only model."
+
         prefix = "grade-cond" if self._conditioned else "grade-only"
         default_version = f"{prefix}-{config.model.backbone}-{digest}"
 
@@ -127,17 +157,37 @@ class QualityGrader:
 
         tensor = self._transform(image).unsqueeze(0)
         crop_index = torch.tensor([CROP_LABEL_TO_INDEX[crop]])
+        similarity = None
         with self._lock, torch.no_grad():
-            logits = (
-                self._model(tensor, crop_index) if self._conditioned else self._model(tensor)[1]
-            )
+            if self._conditioned:
+                logits = self._model(tensor, crop_index)
+            else:
+                features = self._model.backbone(tensor)
+                logits = self._model.grade_head(features)
+                if self.photo_reference is not None:
+                    similarity = self.photo_reference.similarity(F.normalize(features, dim=1)[0])
             probs = F.softmax(logits, dim=1)[0]
 
         best = int(torch.argmax(probs).item())
         confidence = float(probs[best].item())
+        low_confidence = confidence < self.confidence_threshold
         return GradePrediction(
             grade=GRADE_CLASSES[best],
             confidence=round(confidence, 4),
             probabilities={g: round(float(p), 4) for g, p in zip(GRADE_CLASSES, probs)},
-            low_confidence=confidence < self.confidence_threshold,
+            low_confidence=low_confidence,
+            photo_similarity=None if similarity is None else round(similarity, 4),
+            review_reason=self._review_reason(similarity, low_confidence),
         )
+
+    def _review_reason(self, similarity: float | None, low_confidence: bool) -> str | None:
+        # Untrained previews are already labelled as previews by modelStatus.
+        if self.status != MODEL_STATUS_TRAINED:
+            return None
+        if self.photo_reference is None or similarity is None:
+            return REVIEW_PHOTO_CHECK_UNAVAILABLE
+        if similarity < self.photo_reference.min_similarity:
+            return REVIEW_UNFAMILIAR_PHOTO
+        if low_confidence:
+            return REVIEW_LOW_CONFIDENCE
+        return None

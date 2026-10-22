@@ -18,6 +18,8 @@ COPY src ./src
 RUN pip install ".[api]" "timm>=0.9.12" "numpy>=1.26.0"
 
 COPY configs ./configs
+# Photo-similarity reference for the served weights (checked by fingerprint).
+COPY reference ./reference
 
 # Mount an independently verified trained artifact. Missing weights disable grading.
 RUN mkdir -p models
@@ -26,7 +28,7 @@ ENV MODEL_CHECKPOINT=/app/models/best_model.pth \
     ALLOW_UNTRAINED_MODEL=false \
     OMP_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
-    PRICE_RULES=/app/configs/price_rules.yaml
+    OFFICIAL_PRICES=/app/configs/official_prices.json
 
 RUN useradd --create-home --uid 10001 app && chown -R app /app
 USER app

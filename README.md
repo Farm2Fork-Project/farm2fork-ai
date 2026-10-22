@@ -36,11 +36,26 @@ Explicit `ALLOW_UNTRAINED_MODEL=true` enables labeled development previews only.
 The supplied-photo diagnostic showed poor transfer; suggestions require farmer confirmation
 and must not be described as certified assessments or 92.8% field accuracy.
 
-**Price estimate.** There is no trained price model yet. `configs/price_rules.yaml`
-implements the rule-based fallback from master context 10.3: crop or category
-reference range × monthly seasonality × grade, converted to the unit. Its ranges
-are **illustrative development defaults** and must be replaced with PBS/AMIS
-data. Confidence is capped at 0.45.
+**Photo checks (referral).** Softmax confidence did not separate right from wrong on the
+supplied phone photos: the four most confident predictions were all wrong. A grade is
+therefore shown only when the photo resembles the training photos *and* confidence is at
+least 0.7; otherwise the response sets `needsReview` with a `reviewReason`
+(`unfamiliar_photo`, `low_confidence`, `photo_check_unavailable`) and clients ask for a
+retake or a manual grade. Similarity is the mean cosine similarity to the 5 nearest training
+images in the backbone embedding; the threshold is the validation 5th percentile (0.6575).
+`reference/photo_reference.npz` is built by `scripts/build_photo_reference.py` and is tied
+to the exact weights by a state-dict fingerprint; any other checkpoint refers every photo.
+Thresholds were fixed on validation data only. Held-out test: 88.8% of images graded at
+96.9% accuracy (94.2% ungated). Supplied phone photos: 24 of 25 referred, 1 shown (wrong).
+
+**Price reference.** `/predict/price` returns observed, dated AMIS Punjab wholesale mandi
+prices, not a model: the farmer's own market when it reported (backend sends the farm
+city), otherwise the middle half of fair-quality prices across Punjab markets. Every
+response carries the commodity, trading date, market scope and source. Products without an
+official commodity, or units that cannot be converted, get 422 instead of a guess.
+Refresh the snapshot with `scripts/update_official_prices.py` (writes
+`configs/official_prices.json`; core crops walk back to their last day with at least three
+reporting markets) and release a new image. Prices are wholesale, not farm-gate.
 
 ```bash
 pip install -e ".[ml,api,dev]"
