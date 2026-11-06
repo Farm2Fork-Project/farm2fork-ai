@@ -12,11 +12,13 @@ Products the snapshot does not cover get no price rather than a guess.
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from statistics import quantiles
+from urllib.parse import urlparse
 
 
 class PriceNotEstimableError(ValueError):
@@ -64,8 +66,23 @@ CROP_ALIASES = {
 }
 # First words that name a family, not a commodity ("Green Chilli", "Gram Pulse").
 AMBIGUOUS_FIRST_WORDS = {
-    "green", "red", "sweet", "lady", "bitter", "bottle", "gram", "mash", "moong",
-    "masoor", "rice", "paddy", "wheat", "seed", "banola", "brown", "mango",
+    "green",
+    "red",
+    "sweet",
+    "lady",
+    "bitter",
+    "bottle",
+    "gram",
+    "mash",
+    "moong",
+    "masoor",
+    "rice",
+    "paddy",
+    "wheat",
+    "seed",
+    "banola",
+    "brown",
+    "mango",
 }
 
 # Rupees per kilogram-type AMIS unit, per requested unit.
@@ -78,7 +95,11 @@ UNIT_FACTORS = {
 
 def _words(text: str) -> set[str]:
     words = set(re.findall(r"[a-z]+", text.lower()))
-    return words | {w[:-2] for w in words if w.endswith("es")} | {w[:-1] for w in words if w.endswith("s")}
+    return (
+        words
+        | {w[:-2] for w in words if w.endswith("es")}
+        | {w[:-1] for w in words if w.endswith("s")}
+    )
 
 
 def _base_words(name: str) -> list[str]:
@@ -89,11 +110,61 @@ class OfficialPrices:
     def __init__(self, path: Path) -> None:
         with path.open(encoding="utf-8") as handle:
             document = json.load(handle)
+        self._validate(document)
         self.source: str = document["source"]
         self.source_url: str = document["source_url"]
         self.fetched_at: str = document["fetched_at_pkt"]
         self.version = "amis-punjab-" + self.fetched_at[:10]
         self._commodities: dict = document["commodities"]
+
+    @staticmethod
+    def _validate(document: dict) -> None:
+        """Reject corrupt or untraceable source data before accepting requests."""
+        try:
+            if not isinstance(document["source"], str) or not document["source"].strip():
+                raise ValueError("Official prices require a source")
+            source_url = urlparse(document["source_url"])
+            if (
+                source_url.scheme not in {"http", "https"}
+                or not source_url.hostname
+                or source_url.username
+            ):
+                raise ValueError("Official prices require an HTTP source URL")
+            fetched = datetime.fromisoformat(document["fetched_at_pkt"])
+            if fetched.tzinfo is None:
+                raise ValueError("Snapshot fetch time must include its timezone")
+            commodities = document["commodities"]
+            if not isinstance(commodities, dict) or not commodities:
+                raise ValueError("Official price snapshot is empty")
+            for name, commodity in commodities.items():
+                if (
+                    not isinstance(name, str)
+                    or not name.strip()
+                    or commodity["unit"] not in UNIT_FACTORS
+                ):
+                    raise ValueError("Unknown official commodity or unit")
+                if date.fromisoformat(commodity["observed_on"]) > fetched.date():
+                    raise ValueError("Trading date is later than snapshot fetch date")
+                markets = commodity["markets"]
+                if not isinstance(markets, dict) or not markets:
+                    raise ValueError("Official commodity has no market observations")
+                for market, row in markets.items():
+                    values = [row[key] for key in ("min", "fqp", "max")]
+                    if (
+                        not isinstance(market, str)
+                        or not market.strip()
+                        or any(
+                            isinstance(value, bool)
+                            or not isinstance(value, (int, float))
+                            or not math.isfinite(value)
+                            or value <= 0
+                            for value in values
+                        )
+                        or not values[0] <= values[1] <= values[2]
+                    ):
+                        raise ValueError("Invalid official market observation")
+        except (KeyError, TypeError, AttributeError) as exc:
+            raise ValueError("Malformed official price snapshot") from exc
 
     def _match(self, product_name: str) -> list[str]:
         words = _words(product_name)
@@ -121,7 +192,9 @@ class OfficialPrices:
                 found.append(name)
         return list(dict.fromkeys(found))
 
-    def estimate(self, *, product_name: str, unit: str, location: str | None = None) -> PriceEstimate:
+    def estimate(
+        self, *, product_name: str, unit: str, location: str | None = None
+    ) -> PriceEstimate:
         unit = unit.lower()
         names = self._match(product_name)
         names = [n for n in names if unit in UNIT_FACTORS[self._commodities[n]["unit"]]]
@@ -133,7 +206,9 @@ class OfficialPrices:
         latest = max(self._commodities[n]["observed_on"] for n in names)
         names = [n for n in names if self._commodities[n]["observed_on"] == latest]
         factor = UNIT_FACTORS[self._commodities[names[0]]["unit"]][unit]
-        rows = [(market, row) for n in names for market, row in self._commodities[n]["markets"].items()]
+        rows = [
+            (market, row) for n in names for market, row in self._commodities[n]["markets"].items()
+        ]
 
         local = self._local_rows(rows, location)
         if local:

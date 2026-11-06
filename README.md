@@ -26,7 +26,7 @@ The service in `src/crop_grading/service/` is what the Farm2Fork backend calls
 | --- | --- |
 | `GET /health` | Liveness, and whether a **trained** checkpoint is loaded |
 | `POST /predict/quality` | Multipart `image` + `crop` → grade A–D, probabilities, confidence |
-| `POST /predict/price` | Product facts → rule-based PKR range per unit (`method: rule_based`) |
+| `POST /predict/price` | Product facts → dated official wholesale PKR reference (`method: official_wholesale`) |
 
 **Quality model.** The default is the frozen plain grade-only EfficientNet-B0 seed-42
 checkpoint. The farmer supplies the crop; crop recognition is not required. The service

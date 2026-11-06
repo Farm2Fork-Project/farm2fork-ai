@@ -69,8 +69,8 @@ sudo f2fctl check
 ```
 
 6. Confirm internal `/health` reports `trained`, all four supported crops and the manifest's exact
-   `grade-only-...` version. The existing Compose mount has a historical `grade_cond_dedup` path;
-   its explicit `MODEL_CHECKPOINT` override is still valid for new weights and need not be renamed.
+   `grade-only-...` version. The production Compose mount now exposes `/opt/farm2fork/models` at `/app/models`;
+   `MODEL_CHECKPOINT=/app/models/best_model.pth` selects the frozen artifact.
    `ALLOW_UNTRAINED_MODEL=false` must remain set. `AI_REQUIRE_TRAINED=true` makes the existing
    readiness probe require trained weights.
 7. Exercise authenticated farmer flows: one supported crop with a photo and explicit application,
@@ -99,3 +99,22 @@ conditioned weights **before** restoring old AI code. Do not reset the blockchai
 The model's seed-42 curated test accuracy is 439/466 (94.2%); its supplied-photo diagnostic agreement
 is 7/25 (28%). Those figures concern different distributions. MVP flow completion does not establish
 better field accuracy. Preserve the diagnostic and research limitations when presenting this release.
+
+## Release readiness update — 2026-10-29
+
+The service now marks untrained previews as `needsReview=true` with
+`reviewReason=untrained_model`. Production APP_ENV requires an internal token and
+rejects untrained mode. Price snapshots and photo references are validated before
+use; invalid/empty/non-finite records cannot silently enable recommendations.
+Official refresh writes are atomic and retain the previous snapshot on failure.
+
+Run `./.venv/bin/python scripts/validate_release.py --output /tmp/ai-release.json`
+to verify trained weights, matching normalized photo embeddings, model dimensions,
+confidence floor and official price source metadata, and record SHA-256 hashes.
+This validates local artifacts; it is not a field accuracy claim. Package tests and
+container results for the current pass are recorded in the workspace release ledger.
+
+The earlier verification section is historical and must not be treated as the
+current test count or container status. Date/source labels remain mandatory: the
+checked-in snapshot contains historical observations and is not refreshed merely
+by rebuilding an image.

@@ -112,7 +112,10 @@ class QualityResponse(BaseModel):
     needsReview: bool = Field(
         description="True when the grade must not be shown: ask for a retake or a manual grade."
     )
-    reviewReason: Literal["low_confidence", "unfamiliar_photo", "photo_check_unavailable"] | None
+    reviewReason: (
+        Literal["low_confidence", "unfamiliar_photo", "photo_check_unavailable", "untrained_model"]
+        | None
+    )
     photoSimilarity: float | None = Field(
         description="Similarity to the training photos (higher is more familiar)."
     )
@@ -185,7 +188,9 @@ class PriceRequest(BaseModel):
     quantity: float | None = Field(default=None, gt=0)
     qualityGrade: Literal["A", "B", "C", "D"] | None = None
     location: str | None = Field(
-        default=None, max_length=120, description="Farmer's city; its own mandi is used if it reported."
+        default=None,
+        max_length=120,
+        description="Farmer's city; its own mandi is used if it reported.",
     )
 
 
@@ -198,7 +203,9 @@ class PriceResponse(BaseModel):
     method: Literal["official_wholesale"] = "official_wholesale"
     commodity: str = Field(description="Official commodity name(s) the range comes from.")
     observedOn: date = Field(description="Mandi trading day of the prices.")
-    marketScope: str = Field(description="The farmer's market, or Punjab for the middle half of markets.")
+    marketScope: str = Field(
+        description="The farmer's market, or Punjab for the middle half of markets."
+    )
     marketCount: int
     source: str
     sourceUrl: str
