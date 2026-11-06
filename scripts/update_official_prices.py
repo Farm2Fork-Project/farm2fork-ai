@@ -16,13 +16,17 @@ import argparse
 import html
 import http.cookiejar
 import json
+import os
 import re
+import tempfile
 import time
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+from crop_grading.service.pricing import OfficialPrices
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "http://www.amis.pk"
@@ -38,7 +42,7 @@ CORE_PREFIXES = ("Mango",)
 def _cells(row: str) -> list[str]:
     return [
         re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", cell))).strip()
-        for cell in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)
+        for cell in re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)
     ]
 
 
@@ -79,7 +83,7 @@ class Amis:
     def commodities(self) -> dict[str, int]:
         page = self._get(MARKET_LIST_URL)
         found = {}
-        for row in re.findall(r"<tr[^>]*>(.*?)</tr>", page, re.S):
+        for row in re.findall(r"<tr[^>]*>(.*?)</tr>", page, re.DOTALL):
             link = re.search(r"CommodityChart\.aspx\?cmd=(\d+)", row)
             cells = _cells(row)
             if link and cells:
@@ -99,7 +103,7 @@ class Amis:
             raise ValueError(f"No dated price table for commodity {commodity_id}.")
         on = date(int(dated.group(3)), int(dated.group(2)), int(dated.group(1)))
         markets = {}
-        for row in re.findall(r"<tr[^>]*>(.*?)</tr>", page, re.S):
+        for row in re.findall(r"<tr[^>]*>(.*?)</tr>", page, re.DOTALL):
             cells = _cells(row)
             if len(cells) != 6 or not re.match(r"\d+\s", cells[0]):
                 continue
@@ -128,7 +132,7 @@ class Amis:
                 fallback = (on, markets)
             return (on, markets) if len(markets) >= min_markets else None
 
-        for back in range(0, 15):
+        for back in range(15):
             if found := check(back):
                 return found
         for back in range(21, max_days + 1, 7):
@@ -141,10 +145,36 @@ class Amis:
         return fallback
 
 
+def write_snapshot(document: dict, output: Path) -> None:
+    """Validate first, then atomically replace only a complete price snapshot."""
+    OfficialPrices._validate(document)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=output.parent,
+            prefix=".prices-",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(json.dumps(document, ensure_ascii=False, indent=1) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, output)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "configs/official_prices.json")
-    parser.add_argument("--recent-days", type=int, default=3, help="Look-back for non-core commodities")
+    parser.add_argument(
+        "--recent-days", type=int, default=3, help="Look-back for non-core commodities"
+    )
     parser.add_argument("--core-days", type=int, default=200, help="Look-back for core crops")
     parser.add_argument("--core-min-markets", type=int, default=3)
     parser.add_argument("--delay", type=float, default=0.3)
@@ -160,7 +190,9 @@ def main() -> None:
         else:
             found = None
             for back in range(args.recent_days):
-                on, markets = amis.prices(commodity_id, None if back == 0 else today - timedelta(days=back))
+                on, markets = amis.prices(
+                    commodity_id, None if back == 0 else today - timedelta(days=back)
+                )
                 if markets:
                     found = (on, markets)
                     break
@@ -181,7 +213,7 @@ def main() -> None:
         "fetched_at_pkt": datetime.now(PKT).isoformat(timespec="seconds"),
         "commodities": snapshot,
     }
-    args.output.write_text(json.dumps(document, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    write_snapshot(document, args.output)
     print(f"saved {len(snapshot)} commodities to {args.output}")
 
 

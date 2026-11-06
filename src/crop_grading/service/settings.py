@@ -39,8 +39,20 @@ class ServiceSettings:
     max_image_bytes: int
     trained_crops: tuple[str, ...] = field(default=DEFAULT_TRAINED_CROPS)
     model_version: str | None = None
+    environment: str = "development"
 
     def __post_init__(self) -> None:
+        if self.environment not in {"development", "test", "production"}:
+            raise ValueError("APP_ENV must be development, test or production")
+        if self.environment == "production":
+            if not self.service_token or not self.service_token.strip():
+                raise ValueError("AI_SERVICE_TOKEN is required in production")
+            if self.allow_untrained:
+                raise ValueError("ALLOW_UNTRAINED_MODEL must be false in production")
+        if self.max_image_bytes <= 0:
+            raise ValueError("MAX_IMAGE_BYTES must be positive")
+        if not self.trained_crops:
+            raise ValueError("MODEL_TRAINED_CROPS must contain a supported crop")
         if any(crop not in SUPPORTED_GRADE_CROPS for crop in self.trained_crops):
             raise ValueError("MODEL_TRAINED_CROPS may only contain wheat,rice,mango,maize")
 
@@ -73,4 +85,5 @@ class ServiceSettings:
                 else DEFAULT_TRAINED_CROPS
             ),
             model_version=os.environ.get("MODEL_VERSION") or None,
+            environment=os.environ.get("APP_ENV", "development").strip().lower(),
         )

@@ -5,26 +5,31 @@ FROM python:3.11-slim
 # from plain PyPI when download.pytorch.org is unreachable.
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
+ENV APP_ENV=production \
+    PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-RUN pip install --index-url "${TORCH_INDEX_URL}" "torch>=2.2.0" "torchvision>=0.17.0"
+COPY requirements-runtime.lock ./
+RUN --mount=type=cache,target=/root/.cache/pip \
+    PIP_NO_CACHE_DIR=false pip install --extra-index-url "${TORCH_INDEX_URL}" -r requirements-runtime.lock
 
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install ".[api]" "timm>=0.9.12" "numpy>=1.26.0"
+RUN pip install --no-deps ".[api]"
 
 COPY configs ./configs
 # Photo-similarity reference for the served weights (checked by fingerprint).
 COPY reference ./reference
+COPY scripts/validate_release.py ./scripts/validate_release.py
 
 # Mount an independently verified trained artifact. Missing weights disable grading.
 RUN mkdir -p models
 ENV MODEL_CHECKPOINT=/app/models/best_model.pth \
     MODEL_CONFIG=/app/configs/grade_only_four_crops_dedup_15ep.yaml \
+    MODEL_PHOTO_REFERENCE=/app/reference/photo_reference.npz \
     ALLOW_UNTRAINED_MODEL=false \
     OMP_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \

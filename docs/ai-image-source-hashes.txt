@@ -1,0 +1,8 @@
+/usr/local/lib/python3.11/site-packages/crop_grading/service/pricing.py:640bc452dafacfdbc6c5bf8f900c907ab11b69f664abdc6788d4115ca232559d
+/usr/local/lib/python3.11/site-packages/crop_grading/service/app.py:6daec2f372f81f6b12dee18d87305067424a68e5238563a6e6a817c9502121d1
+/usr/local/lib/python3.11/site-packages/crop_grading/service/photo_reference.py:b30d9e5c07d55d68456f9727db475eaa0b731459944894a64c5880ad5ce4700d
+/usr/local/lib/python3.11/site-packages/crop_grading/service/grading.py:c066231775aac9f08f3a5980131c7237ece8268691ebb3c6d0681623200f4d26
+/usr/local/lib/python3.11/site-packages/crop_grading/service/__init__.py:e06210d34b45275bd3510c4beabcf3866ef5118b4dc3c7eb8f56af84b70657d2
+/usr/local/lib/python3.11/site-packages/crop_grading/service/settings.py:9a4862c790cb1897c90905ff1c999f11597600dc93528443ce1d2072f34eb6e0
+/app/requirements-runtime.lock:55423de9edaffe9f54c1c3e81dbda294267933b08fc888d72ce3817f015206f8
+/app/scripts/validate_release.py:c026115e0d741c358101c9e52c20a51e5285cd926b2626fcb82613fc5fd2901c

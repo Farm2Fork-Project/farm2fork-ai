@@ -36,6 +36,7 @@ from crop_grading.utils.config import load_config
 MODEL_STATUS_TRAINED = "trained"
 MODEL_STATUS_UNTRAINED = "untrained"
 
+REVIEW_UNTRAINED_MODEL = "untrained_model"
 REVIEW_LOW_CONFIDENCE = "low_confidence"
 REVIEW_UNFAMILIAR_PHOTO = "unfamiliar_photo"
 REVIEW_PHOTO_CHECK_UNAVAILABLE = "photo_check_unavailable"
@@ -127,7 +128,9 @@ class QualityGrader:
         if state is not None and not self._conditioned:
             try:
                 self.photo_reference = PhotoReference.load(
-                    settings.photo_reference_path, weights_fingerprint(state)
+                    settings.photo_reference_path,
+                    weights_fingerprint(state),
+                    expected_dimension=model.backbone.num_features,
                 )
             except PhotoReferenceError as exc:
                 self.photo_reference_error = str(exc)
@@ -181,9 +184,9 @@ class QualityGrader:
         )
 
     def _review_reason(self, similarity: float | None, low_confidence: bool) -> str | None:
-        # Untrained previews are already labelled as previews by modelStatus.
+        # Preview output never becomes an actionable farmer recommendation.
         if self.status != MODEL_STATUS_TRAINED:
-            return None
+            return REVIEW_UNTRAINED_MODEL
         if self.photo_reference is None or similarity is None:
             return REVIEW_PHOTO_CHECK_UNAVAILABLE
         if similarity < self.photo_reference.min_similarity:

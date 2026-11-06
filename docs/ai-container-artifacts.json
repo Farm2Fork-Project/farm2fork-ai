@@ -1,0 +1,19 @@
+{
+  "validation": "local-artifacts-only",
+  "qualityModel": "trained",
+  "qualityModelVersion": "grade-only-efficientnet_b0-17f80bde",
+  "photoCheck": "enabled",
+  "trainedCrops": [
+    "wheat",
+    "rice",
+    "mango",
+    "maize"
+  ],
+  "weightsSha256": "17f80bde1f8e976025958b5dc9f154e288656e65a7bce9919cbf71b50f1e283a",
+  "configSha256": "3decc90c7307bc0ae70d9eee141d32ccda13fcdda108d1adeee00d3fbb1fcdad",
+  "photoReferenceSha256": "b0cbfa35e0613fbb2a32de91d968762e21005d7ad7ce13bc37ef83ab3351f530",
+  "pricesSha256": "34765db60d1589bf623afbb29ae911823f38f409cd99c8515947fadaef10d816",
+  "priceMethod": "official_wholesale",
+  "pricesFetchedAt": "2026-10-22T19:06:41+05:00",
+  "fieldAccuracyVerified": false
+}
