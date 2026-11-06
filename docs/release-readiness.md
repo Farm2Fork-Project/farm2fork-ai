@@ -11,3 +11,7 @@ Docker and CI consume the same 41 pinned Linux amd64/Python3.11 serving dependen
 Actual local container HTTP smoke passed with the frozen checkpoint mounted read-only and serving only 127.0.0.1:18000: trained model; photo check enabled; authenticated Wheat/kg wholesale response with source/date/market provenance; unauthenticated inference 401; synthetic blank JPEG referred as unfamiliar_photo. The artifact validator inside this same image confirms all four hashes match the prior local evidence. See ai-container-smoke.json, ai-container-artifacts.json and ai-image-source-hashes.txt. The smoke script uses an explicitly local fixture token, never a production credential.
 
 The full source suite previously passed 61 tests and scoped Ruff passed. The fresh final suite also passed **61 tests** (44.74s); receipt is ai-tests.log. Curated tests, trained health and similarity checks do not establish field accuracy. Physical produce-photo evaluation remains a release acceptance gate; manual review must remain available.
+
+## Develop integration — 2026-11-06
+
+Merged the release work onto develop based on freshly fetched origin/main. Final merged-tree validation passed: 61 tests. Production was not contacted or deployed. Signing/device/provider acceptance gates remain as recorded above.
