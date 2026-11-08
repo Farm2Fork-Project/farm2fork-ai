@@ -425,8 +425,9 @@ def test_familiar_photo_is_graded_only_when_confident(make_client, tmp_path):
     assert sure["photoSimilarity"] > 0.99
 
 
-def test_untrained_preview_is_not_gated(make_client):
+def test_untrained_preview_always_requires_review(make_client):
     with make_client() as client:
         body = _grade(client, _jpeg())
     assert body["modelStatus"] == "untrained"
-    assert body["needsReview"] is False
+    assert body["needsReview"] is True
+    assert body["reviewReason"] == "untrained_model"

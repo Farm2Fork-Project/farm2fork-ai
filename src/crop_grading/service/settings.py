@@ -33,14 +33,28 @@ class ServiceSettings:
     config_path: Path
     official_prices_path: Path
     photo_reference_path: Path
+    crop_match_weights_path: Path | None
+    crop_match_min_probability: float
     crop_embed_dim: int
     allow_untrained: bool
     service_token: str | None
     max_image_bytes: int
     trained_crops: tuple[str, ...] = field(default=DEFAULT_TRAINED_CROPS)
     model_version: str | None = None
+    environment: str = "development"
 
     def __post_init__(self) -> None:
+        if self.environment not in {"development", "test", "production"}:
+            raise ValueError("APP_ENV must be development, test or production")
+        if self.environment == "production":
+            if not self.service_token or not self.service_token.strip():
+                raise ValueError("AI_SERVICE_TOKEN is required in production")
+            if self.allow_untrained:
+                raise ValueError("ALLOW_UNTRAINED_MODEL must be false in production")
+        if self.max_image_bytes <= 0:
+            raise ValueError("MAX_IMAGE_BYTES must be positive")
+        if not self.trained_crops:
+            raise ValueError("MODEL_TRAINED_CROPS must contain a supported crop")
         if any(crop not in SUPPORTED_GRADE_CROPS for crop in self.trained_crops):
             raise ValueError("MODEL_TRAINED_CROPS may only contain wheat,rice,mango,maize")
 
@@ -63,6 +77,12 @@ class ServiceSettings:
             photo_reference_path=_resolve(
                 os.environ.get("MODEL_PHOTO_REFERENCE", "reference/photo_reference.npz")
             ),
+            crop_match_weights_path=(
+                _resolve(os.environ["CROP_MATCH_WEIGHTS"])
+                if os.environ.get("CROP_MATCH_WEIGHTS")
+                else None
+            ),
+            crop_match_min_probability=float(os.environ.get("CROP_MATCH_MIN_PROBABILITY", "0.5")),
             crop_embed_dim=int(os.environ.get("MODEL_CROP_EMBED_DIM", "16")),
             allow_untrained=_env_bool("ALLOW_UNTRAINED_MODEL", False),
             service_token=os.environ.get("AI_SERVICE_TOKEN") or None,
@@ -73,4 +93,5 @@ class ServiceSettings:
                 else DEFAULT_TRAINED_CROPS
             ),
             model_version=os.environ.get("MODEL_VERSION") or None,
+            environment=os.environ.get("APP_ENV", "development").strip().lower(),
         )

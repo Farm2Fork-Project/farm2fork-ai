@@ -78,6 +78,9 @@ class HealthResponse(BaseModel):
     photoCheck: Literal["enabled", "unavailable"] = Field(
         description="Whether unfamiliar photos can be detected and referred for review."
     )
+    cropCheck: Literal["enabled", "disabled"] = Field(
+        description="Whether the photo is checked to show the selected crop."
+    )
     trainedCrops: list[str]
     priceModelVersion: str
     priceMethod: Literal["official_wholesale"]
@@ -91,6 +94,7 @@ def health(request: Request) -> HealthResponse:
         qualityModel=grader.status if grader else "unavailable",
         qualityModelVersion=grader.version if grader else None,
         photoCheck="enabled" if grader and grader.photo_reference else "unavailable",
+        cropCheck="enabled" if grader and grader.crop_matcher else "disabled",
         trainedCrops=list(request.app.state.settings.trained_crops),
         priceModelVersion=request.app.state.prices.version,
         priceMethod="official_wholesale",
@@ -112,7 +116,20 @@ class QualityResponse(BaseModel):
     needsReview: bool = Field(
         description="True when the grade must not be shown: ask for a retake or a manual grade."
     )
-    reviewReason: Literal["low_confidence", "unfamiliar_photo", "photo_check_unavailable"] | None
+    reviewReason: (
+        Literal[
+            "low_confidence",
+            "crop_mismatch",
+            "unfamiliar_photo",
+            "photo_check_unavailable",
+            "untrained_model",
+        ]
+        | None
+    )
+    cropMatch: float | None = Field(
+        default=None,
+        description="Probability the photo shows the selected crop (None when the check is off).",
+    )
     photoSimilarity: float | None = Field(
         description="Similarity to the training photos (higher is more familiar)."
     )
@@ -170,6 +187,7 @@ async def predict_quality(
         needsReview=prediction.needs_review,
         reviewReason=prediction.review_reason,
         photoSimilarity=prediction.photo_similarity,
+        cropMatch=prediction.crop_match,
         modelStatus=grader.status,
         modelVersion=grader.version,
     )
@@ -185,7 +203,9 @@ class PriceRequest(BaseModel):
     quantity: float | None = Field(default=None, gt=0)
     qualityGrade: Literal["A", "B", "C", "D"] | None = None
     location: str | None = Field(
-        default=None, max_length=120, description="Farmer's city; its own mandi is used if it reported."
+        default=None,
+        max_length=120,
+        description="Farmer's city; its own mandi is used if it reported.",
     )
 
 
@@ -198,7 +218,9 @@ class PriceResponse(BaseModel):
     method: Literal["official_wholesale"] = "official_wholesale"
     commodity: str = Field(description="Official commodity name(s) the range comes from.")
     observedOn: date = Field(description="Mandi trading day of the prices.")
-    marketScope: str = Field(description="The farmer's market, or Punjab for the middle half of markets.")
+    marketScope: str = Field(
+        description="The farmer's market, or Punjab for the middle half of markets."
+    )
     marketCount: int
     source: str
     sourceUrl: str

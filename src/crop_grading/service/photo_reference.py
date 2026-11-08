@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,7 +45,9 @@ class PhotoReference:
     provenance: dict
 
     @classmethod
-    def load(cls, path: Path, expected_fingerprint: str) -> PhotoReference:
+    def load(
+        cls, path: Path, expected_fingerprint: str, *, expected_dimension: int | None = None
+    ) -> PhotoReference:
         if not path.is_file():
             raise PhotoReferenceError(f"No photo reference at {path}.")
         try:
@@ -58,6 +61,23 @@ class PhotoReference:
                 )
         except (OSError, KeyError, ValueError) as exc:
             raise PhotoReferenceError("The photo reference file is malformed.") from exc
+        if (
+            reference.embeddings.ndim != 2
+            or min(reference.embeddings.shape, default=0) < 1
+            or not np.isfinite(reference.embeddings).all()
+            or reference.k < 1
+            or not math.isfinite(reference.min_similarity)
+            or reference.min_similarity < -1
+            or not isinstance(reference.provenance, dict)
+        ):
+            raise PhotoReferenceError("The photo reference has invalid embeddings or thresholds.")
+        if expected_dimension is not None and reference.embeddings.shape[1] != expected_dimension:
+            raise PhotoReferenceError(
+                "The photo reference embedding dimension does not match the model."
+            )
+        norms = np.linalg.norm(reference.embeddings, axis=1)
+        if not np.allclose(norms, 1.0, rtol=0.02, atol=0.02):
+            raise PhotoReferenceError("The photo reference embeddings must be normalized.")
         if reference.fingerprint != expected_fingerprint:
             raise PhotoReferenceError("The photo reference was built for different weights.")
         return reference
@@ -66,7 +86,7 @@ class PhotoReference:
         """Mean cosine similarity of one normalised embedding to its k nearest neighbours."""
         sims = self.embeddings @ embedding.detach().cpu().numpy().astype(np.float32)
         k = min(self.k, sims.shape[0])
-        return float(np.partition(sims, -k)[-k:].mean())
+        return float(np.clip(np.partition(sims, -k)[-k:].mean(), -1.0, 1.0))
 
 
 def save_reference(

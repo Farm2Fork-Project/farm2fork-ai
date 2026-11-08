@@ -25,6 +25,7 @@ from crop_grading.constants import CROP_LABEL_TO_INDEX, GRADE_CLASSES
 from crop_grading.data.transforms import build_eval_transforms
 from crop_grading.models.conditioned_model import CropConditionedGradeModel
 from crop_grading.models.multitask_model import CropGradingModel
+from crop_grading.service.crop_match import CropMatchChecker, CropMatchError
 from crop_grading.service.photo_reference import (
     PhotoReference,
     PhotoReferenceError,
@@ -36,7 +37,9 @@ from crop_grading.utils.config import load_config
 MODEL_STATUS_TRAINED = "trained"
 MODEL_STATUS_UNTRAINED = "untrained"
 
+REVIEW_UNTRAINED_MODEL = "untrained_model"
 REVIEW_LOW_CONFIDENCE = "low_confidence"
+REVIEW_CROP_MISMATCH = "crop_mismatch"
 REVIEW_UNFAMILIAR_PHOTO = "unfamiliar_photo"
 REVIEW_PHOTO_CHECK_UNAVAILABLE = "photo_check_unavailable"
 
@@ -56,6 +59,8 @@ class GradePrediction:
     probabilities: dict[str, float]
     low_confidence: bool
     photo_similarity: float | None
+    # Probability the photo shows the selected crop; None when the check is off.
+    crop_match: float | None
     # Set when the grade must not be shown: the farmer retakes or grades manually.
     review_reason: str | None
 
@@ -127,12 +132,25 @@ class QualityGrader:
         if state is not None and not self._conditioned:
             try:
                 self.photo_reference = PhotoReference.load(
-                    settings.photo_reference_path, weights_fingerprint(state)
+                    settings.photo_reference_path,
+                    weights_fingerprint(state),
+                    expected_dimension=model.backbone.num_features,
                 )
             except PhotoReferenceError as exc:
                 self.photo_reference_error = str(exc)
         elif state is not None:
             self.photo_reference_error = "Photo checks require the grade-only model."
+
+        # Optional: off unless weights are configured. A configured but unloadable
+        # model fails startup instead of silently skipping the check.
+        self.crop_matcher: CropMatchChecker | None = None
+        if settings.crop_match_weights_path is not None:
+            try:
+                self.crop_matcher = CropMatchChecker.load(
+                    settings.crop_match_weights_path, settings.crop_match_min_probability
+                )
+            except CropMatchError as exc:
+                raise ModelUnavailableError(str(exc)) from exc
 
         prefix = "grade-cond" if self._conditioned else "grade-only"
         default_version = f"{prefix}-{config.model.backbone}-{digest}"
@@ -155,6 +173,9 @@ class QualityGrader:
         except (UnidentifiedImageError, OSError, SyntaxError) as exc:
             raise InvalidImageError("The upload is not a supported image.") from exc
 
+        crop_match = (
+            None if self.crop_matcher is None else self.crop_matcher.probability(image, crop)
+        )
         tensor = self._transform(image).unsqueeze(0)
         crop_index = torch.tensor([CROP_LABEL_TO_INDEX[crop]])
         similarity = None
@@ -177,13 +198,22 @@ class QualityGrader:
             probabilities={g: round(float(p), 4) for g, p in zip(GRADE_CLASSES, probs)},
             low_confidence=low_confidence,
             photo_similarity=None if similarity is None else round(similarity, 4),
-            review_reason=self._review_reason(similarity, low_confidence),
+            crop_match=None if crop_match is None else round(crop_match, 4),
+            review_reason=self._review_reason(similarity, low_confidence, crop_match),
         )
 
-    def _review_reason(self, similarity: float | None, low_confidence: bool) -> str | None:
-        # Untrained previews are already labelled as previews by modelStatus.
+    def _review_reason(
+        self, similarity: float | None, low_confidence: bool, crop_match: float | None
+    ) -> str | None:
+        # Preview output never becomes an actionable farmer recommendation.
         if self.status != MODEL_STATUS_TRAINED:
-            return None
+            return REVIEW_UNTRAINED_MODEL
+        if (
+            crop_match is not None
+            and self.crop_matcher is not None
+            and not self.crop_matcher.matches(crop_match)
+        ):
+            return REVIEW_CROP_MISMATCH
         if self.photo_reference is None or similarity is None:
             return REVIEW_PHOTO_CHECK_UNAVAILABLE
         if similarity < self.photo_reference.min_similarity:
