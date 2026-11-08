@@ -33,6 +33,8 @@ class ServiceSettings:
     config_path: Path
     official_prices_path: Path
     photo_reference_path: Path
+    crop_match_weights_path: Path | None
+    crop_match_min_probability: float
     crop_embed_dim: int
     allow_untrained: bool
     service_token: str | None
@@ -75,6 +77,12 @@ class ServiceSettings:
             photo_reference_path=_resolve(
                 os.environ.get("MODEL_PHOTO_REFERENCE", "reference/photo_reference.npz")
             ),
+            crop_match_weights_path=(
+                _resolve(os.environ["CROP_MATCH_WEIGHTS"])
+                if os.environ.get("CROP_MATCH_WEIGHTS")
+                else None
+            ),
+            crop_match_min_probability=float(os.environ.get("CROP_MATCH_MIN_PROBABILITY", "0.5")),
             crop_embed_dim=int(os.environ.get("MODEL_CROP_EMBED_DIM", "16")),
             allow_untrained=_env_bool("ALLOW_UNTRAINED_MODEL", False),
             service_token=os.environ.get("AI_SERVICE_TOKEN") or None,
